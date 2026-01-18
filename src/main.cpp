@@ -270,16 +270,13 @@ struct Scene {
 
   //texture
   GLuint back_rockTexture = 0;
+  GLuint stageTexture = 0;
 
 
   // meshes
-  std::shared_ptr<Mesh> rhino = nullptr;
-  std::shared_ptr<Mesh> plane = nullptr;
 
   // transformation matrices
-  glm::mat4 rhinoMat = glm::mat4(1.0);
-  glm::mat4 planeMat = glm::mat4(1.0);
-  glm::mat4 floorMat = glm::mat4(1.0);
+  glm::mat4 backRockMat = glm::mat4(1.0);
   glm::mat4 stageMat = glm::mat4(1.0);
 
   glm::mat4 rockMat1 = glm::mat4(1.0);
@@ -327,6 +324,9 @@ struct Scene {
     glCullFace(GL_BACK);
 
     //SKY draw
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
     g_skyShader->use();
     g_skyShader->set("invView", glm::inverse(g_cam->computeViewMatrix()));
     g_skyShader->set("invProj", glm::inverse(g_cam->computeProjectionMatrix()));
@@ -343,7 +343,7 @@ struct Scene {
 
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
-    glClear(GL_DEPTH_BUFFER_BIT);
+    // glClear(GL_DEPTH_BUFFER_BIT);
 
 
 
@@ -366,8 +366,8 @@ struct Scene {
 
     // back-wall
     mainShader->set("material.albedo", glm::vec3(0.29, 0.51, 0.82)); // default value if the texture was not loaded
-    mainShader->set("modelMat", planeMat);
-    mainShader->set("normMat", glm::mat3(glm::inverseTranspose(planeMat)));
+    mainShader->set("modelMat", backRockMat);
+    mainShader->set("normMat", glm::mat3(glm::inverseTranspose(backRockMat)));
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, back_rockTexture);
@@ -382,23 +382,20 @@ struct Scene {
     glBindTexture(GL_TEXTURE_2D, 0);
     
 
-    // floor
-    mainShader->set("material.albedo", glm::vec3(0.8, 0.8, 0.9));
-    mainShader->set("modelMat", floorMat);
-    mainShader->set("normMat", glm::mat3(glm::inverseTranspose(floorMat)));
-    plane->render();
-
-    // rhino
-    mainShader->set("material.albedo", glm::vec3(1, 0.71, 0.29));
-    mainShader->set("modelMat", rhinoMat);
-    mainShader->set("normMat", glm::mat3(glm::inverseTranspose(rhinoMat)));
-    rhino->render();
-
     // stage
     mainShader->set("material.albedo", glm::vec3(0.6f, 0.6f, 0.6f));
     mainShader->set("modelMat", stageMat);
     mainShader->set("normMat", glm::mat3(glm::inverseTranspose(stageMat)));
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, stageTexture);
+    mainShader->set("material.useTexture", 1);
+    mainShader->set("material.albedoTex", 0);
+
     stage->render();
+
+    mainShader->set("material.useTexture", 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
     //rocks
     auto drawRock = [&](const glm::mat4& M){
@@ -611,13 +608,6 @@ void initScene(const std::string &meshFilename)
 
   // Load meshes in the scene
   {
-    g_scene.rhino = std::make_shared<Mesh>();
-    try {
-      loadOFF(meshFilename, g_scene.rhino);
-    } catch(std::exception &e) {
-      exitOnCriticalError(std::string("[Error loading mesh]") + e.what());
-    }
-    g_scene.rhino->init();
 
     // rock back-wall
     g_scene.back_rock = std::make_shared<Mesh>();
@@ -646,27 +636,17 @@ void initScene(const std::string &meshFilename)
     }
     g_scene.rock->init();
 
-    // floor plane (keep the square)
-    g_scene.plane = std::make_shared<Mesh>();
-    g_scene.plane->addPlan();
-    g_scene.plane->init();
-
     
-    glm::vec3 Stage_Position(-0.185f, -0.177f, -3.0f);
+    glm::vec3 Stage_Position(-0.05f, -0.15f, -3.5f);
     glm::vec3 Full_Object_Scale(0.129f);
     // glm::vec3 Wall_Position(0.0f, 0.15f, -1.0f);
     glm::vec3 Wall_Position = Stage_Position + glm::vec3(0.0f, 0.05f, 0.0f);
 
 
     // make rock smaller (example: 0.2x)
-    g_scene.planeMat =
+    g_scene.backRockMat =
         glm::translate(glm::mat4(1.0f), Wall_Position) *
         glm::scale(glm::mat4(1.0f), Full_Object_Scale);
-
-
-    g_scene.floorMat =
-        glm::translate(glm::mat4(1.0f), glm::vec3(0, -10.25f, 0)) *
-        glm::rotate(glm::mat4(1.0f), (float)(-0.5f * M_PI), glm::vec3(1.0f, 0.0f, 0.0f));
 
 
     glm::mat4 stageTranslate = glm::translate(glm::mat4(1.0f), Stage_Position);
@@ -678,12 +658,15 @@ void initScene(const std::string &meshFilename)
     g_scene.rockMat1 = stageTranslate * glm::translate(glm::mat4(1.0f), glm::vec3(-0.2f, -0.7f, 1.8f)) * rockScale;
     g_scene.rockMat2 = stageTranslate * glm::translate(glm::mat4(1.0f), glm::vec3(-1.2f, -0.7f, 2.3f)) * rockScale;
     g_scene.rockMat3 = stageTranslate * glm::translate(glm::mat4(1.0f), glm::vec3(-0.2f, -10.7f, 1.5f)) * rockScale;
-
   }
 
   // TODO: Load and setup textures
   GLuint back_rockTex = loadTextureFromFileToGPU("data/rock_back_texture.png");
   g_scene.back_rockTexture = back_rockTex;
+
+  GLuint stageTex = loadTextureFromFileToGPU("data/wood_table_diff_2k.jpg");
+  g_scene.stageTexture = stageTex;
+
 
 
 
@@ -712,15 +695,14 @@ void initScene(const std::string &meshFilename)
   }
 
   // Adjust the camera to the mesh
-  glm::vec3 meshCenter;
-  float meshRadius;
-  g_scene.rhino->computeBoundingSphere(meshCenter, meshRadius);
-  g_scene.scene_center = meshCenter;
-  g_scene.scene_radius = meshRadius;
+  g_scene.scene_center = glm::vec3(0.0f);
+  g_scene.scene_radius = 1.0f;
   g_meshScale = g_scene.scene_radius;
+
+
   g_cam->setPosition(g_scene.scene_center + glm::vec3(0.0, 0.0, 3.0*g_meshScale));
   g_cam->setNear(g_meshScale/100.f);
-  g_cam->setFar(6.0*g_meshScale);
+  g_cam->setFar(12.0*g_meshScale);
 }
 
 void init(const std::string &meshFilename)
@@ -733,8 +715,6 @@ void init(const std::string &meshFilename)
 void clear()
 {
   g_cam.reset();
-  g_scene.rhino.reset();
-  g_scene.plane.reset();
   g_scene.mainShader.reset();
   g_scene.shadomMapShader.reset();
   glfwDestroyWindow(g_window);
@@ -756,8 +736,6 @@ void update(float currentTime)
     g_appTimerLastColckTime = currentTime;
     g_appTimer += dt;
     // <---- Update here what needs to be animated over time ---->
-
-    g_scene.rhinoMat = glm::rotate(glm::mat4(1.f), (float)g_appTimer, glm::vec3(0.f, 1.f, 0.f));
   }
 }
 
