@@ -47,7 +47,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-const std::string DEFAULT_MESH_FILENAME("data/frog.obj");
+const std::string DEFAULT_MESH_FILENAME("data/frog1.obj");
 
 // window parameters
 GLFWwindow *g_window = nullptr;
