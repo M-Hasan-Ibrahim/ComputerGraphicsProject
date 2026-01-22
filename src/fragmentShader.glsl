@@ -4,11 +4,10 @@ struct LightSource {
   vec3 position;
   vec3 color;
   float intensity;
-  int isActive;
 };
 
-int numberOfLights = 3;
-uniform LightSource lightSources[3];
+
+uniform LightSource light;
 // TODO: shadow maps
 
 struct Material {
@@ -34,24 +33,15 @@ float pi = 3.1415927;
 // TODO: shadows
 void main() {
   vec3 n = normalize(fNormal);
-  vec3 wo = normalize(camPos - fPosition); // unit vector pointing to the camera
 
-  vec3 radiance = vec3(0, 0, 0);
-  for(int i=0; i<numberOfLights; ++i) {
-    LightSource a_light = lightSources[i];
-    if(a_light.isActive == 1) { // consider active lights only
-      vec3 wi = normalize(a_light.position - fPosition); // unit vector pointing to the light
-      vec3 Li = a_light.color*a_light.intensity;
-      
-      vec3 albedo = material.albedo;
-      if (material.useTexture == 1) {
-        albedo *= texture(material.albedoTex, fTexCoord).rgb;
-      }
+  vec3 wi = normalize(light.position - fPosition);
+  vec3 Li = light.color * light.intensity;
 
-
-      radiance += Li*albedo*max(dot(n, wi), 0);
-    }
+  vec3 albedo = material.albedo;
+  if (material.useTexture == 1) {
+    albedo *= texture(material.albedoTex, fTexCoord).rgb;
   }
 
-  colorOut = vec4(radiance, 1.0); // build an RGBA value from an RGB one
+  vec3 radiance = Li * albedo * max(dot(n, wi), 0.0);
+  colorOut = vec4(radiance, 1.0);
 }

@@ -302,20 +302,20 @@ struct Scene {
     // TODO: first, render the shadow maps
     glEnable(GL_CULL_FACE);
 
-    shadomMapShader->use();
-    for(int i=0; i<lights.size(); ++i) {
-      Light &light = lights[i];
-      light.setupCameraForShadowMapping(shadomMapShader, scene_center, scene_radius*1.5f);
-      light.bindShadowMap();
+    // shadomMapShader->use();
+    // for(int i=0; i<lights.size(); ++i) {
+    //   Light &light = lights[i];
+    //   light.setupCameraForShadowMapping(shadomMapShader, scene_center, scene_radius*1.5f);
+    //   light.bindShadowMap();
 
-      // TODO: render the objects in the scene
+    //   // TODO: render the objects in the scene
 
-      if(saveShadowMapsPpm) {
-        light.shadowMap.savePpmFile(std::string("shadom_map_")+std::to_string(i)+std::string(".ppm"));
-      }
-    }
-    shadomMapShader->stop();
-    saveShadowMapsPpm = false;
+    //   if(saveShadowMapsPpm) {
+    //     light.shadowMap.savePpmFile(std::string("shadom_map_")+std::to_string(i)+std::string(".ppm"));
+    //   }
+    // }
+    // shadomMapShader->stop();
+    // saveShadowMapsPpm = false;
     //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -357,13 +357,20 @@ struct Scene {
     mainShader->set("projMat", g_cam->computeProjectionMatrix());
 
     // lights
-    for(int i=0; i<lights.size(); ++i) {
-      Light &light = lights[i];
-      mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].position"), light.position);
-      mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].color"), light.color);
-      mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].intensity"), light.intensity);
-      mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].isActive"), 1);
-    }
+    // for(int i=0; i<lights.size(); ++i) {
+    //   Light &light = lights[i];
+    //   mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].position"), light.position);
+    //   mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].color"), light.color);
+    //   mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].intensity"), light.intensity);
+    //   mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].isActive"), 1);
+    // }
+    
+    Light &L = lights[0];
+    mainShader->set("light.position",  L.position);
+    mainShader->set("light.color",     L.color);
+    mainShader->set("light.intensity", L.intensity);
+
+
 
 
     // back-wall
@@ -599,13 +606,13 @@ void initOpenGL()
   } catch(std::exception &e) {
     exitOnCriticalError(std::string("[Error loading shader program]") + e.what());
   }
-  try {
-    g_scene.shadomMapShader = ShaderProgram::genBasicShaderProgram("src/vertexShaderShadowMap.glsl", "src/fragmentShaderShadowMap.glsl");
-    g_scene.shadomMapShader->stop();
+  // try {
+  //   g_scene.shadomMapShader = ShaderProgram::genBasicShaderProgram("src/vertexShaderShadowMap.glsl", "src/fragmentShaderShadowMap.glsl");
+  //   g_scene.shadomMapShader->stop();
 
-  } catch(std::exception &e) {
-    exitOnCriticalError(std::string("[Error loading shader program]") + e.what());
-  }
+  // } catch(std::exception &e) {
+  //   exitOnCriticalError(std::string("[Error loading shader program]") + e.what());
+  // }
 }
 
 void initScene(const std::string &meshFilename)
@@ -671,7 +678,6 @@ void initScene(const std::string &meshFilename)
     glm::vec3 Wall_Position = Stage_Position + glm::vec3(0.0f, 0.05f, 0.0f);
     glm::mat4 wallTranslate = glm::translate(glm::mat4(1.0f), Wall_Position);
 
-    // make rock smaller (example: 0.2x)
     g_scene.backRockMat =
         wallTranslate *
         stageRotate *
@@ -697,29 +703,40 @@ void initScene(const std::string &meshFilename)
 
 
 
-  // Setup lights
-  const glm::vec3 pos[3] = {
-    glm::vec3(0.0, 1.0, 1.0),
-    glm::vec3(0.3, 2.0, 0.4),
-    glm::vec3(0.2, 0.4, 2.0),
-  };
-  const glm::vec3 col[3] = {
-    glm::vec3(1.0, 1.0, 1.0),
-    glm::vec3(1.0, 1.0, 0.8),
-    glm::vec3(1.0, 1.0, 0.8),
-  };
-  unsigned int shadow_map_width=2000, shadow_map_height=2000; // play with these parameters
-  for(int i=0; i<3; ++i) {
-    g_scene.lights.push_back(Light());
-    Light &a_light = g_scene.lights[g_scene.lights.size() - 1];
-    a_light.position = pos[i];
-    a_light.color = col[i];
-    a_light.intensity = 0.5f;
-    a_light.shadowMapTexOnGPU = g_availableTextureSlot;
-    glActiveTexture(GL_TEXTURE0 + a_light.shadowMapTexOnGPU);
-    a_light.allocateShadowMapFbo(shadow_map_width, shadow_map_height);
-    ++g_availableTextureSlot;
-  }
+  // // Setup lights
+  // const glm::vec3 pos[3] = {
+  //   glm::vec3(0.0, 1.0, 1.0),
+  //   glm::vec3(0.3, 2.0, 0.4),
+  //   glm::vec3(0.2, 0.4, 2.0),
+  // };
+  // const glm::vec3 col[3] = {
+  //   glm::vec3(1.0, 1.0, 1.0),
+  //   glm::vec3(1.0, 1.0, 0.8),
+  //   glm::vec3(1.0, 1.0, 0.8),
+  // };
+  // unsigned int shadow_map_width=2000, shadow_map_height=2000; // play with these parameters
+  
+  
+  // for(int i=0; i<3; ++i) {
+  //   g_scene.lights.push_back(Light());
+  //   Light &a_light = g_scene.lights[g_scene.lights.size() - 1];
+  //   a_light.position = pos[i];
+  //   a_light.color = col[i];
+  //   a_light.intensity = 0.5f;
+    // a_light.shadowMapTexOnGPU = g_availableTextureSlot;
+    // glActiveTexture(GL_TEXTURE0 + a_light.shadowMapTexOnGPU);
+    // a_light.allocateShadowMapFbo(shadow_map_width, shadow_map_height);
+    // ++g_availableTextureSlot;
+  // }
+
+  g_scene.lights.clear();
+  g_scene.lights.push_back(Light());
+  Light &L = g_scene.lights[0];
+
+  L.position  = glm::vec3(-2.0f, 2.5f, -3.5f);
+  L.color     = glm::vec3(1.0f, 1.0f, 1.0f);
+  L.intensity = 1.0f;
+
 
   // Adjust the camera to the mesh
   g_scene.scene_center = glm::vec3(0.0f);
