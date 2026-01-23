@@ -3,23 +3,28 @@
 #include <vector>
 #include <string>
 #include "EnvMap.h"
+#include "Texture2D.h"
 
 
 
 struct RTMaterial {
   glm::vec3 albedo = glm::vec3(0.8f);
+  bool useTexture = false;
+  int texId = -1;
   bool shadowCatcher = false;
 };
 
 struct RTTriangle {
   glm::vec3 p0, p1, p2;
   glm::vec3 n0, n1, n2;
+  glm::vec2 uv0, uv1, uv2;
   int matId = 0;
 };
 
 struct RTScene {
   std::vector<RTTriangle> tris;
   std::vector<RTMaterial> mats;
+  std::vector<Texture2D> textures;
 };
 
 struct RTCamera {
@@ -58,6 +63,7 @@ private:
     float t = 1e30f;
     glm::vec3 p;
     glm::vec3 n;
+    glm::vec2 uv;
     int matId = -1;
   };
 

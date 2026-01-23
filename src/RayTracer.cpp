@@ -10,9 +10,7 @@ static inline float clamp01(float x) { return std::max(0.f, std::min(1.f, x)); }
 
 
 
-bool RayTracer::intersectTriangle(const glm::vec3& ro, const glm::vec3& rd,
-                                  const RTTriangle& tri, float& t, float& u, float& v)
-{
+bool RayTracer::intersectTriangle(const glm::vec3& ro, const glm::vec3& rd, const RTTriangle& tri, float& t, float& u, float& v) {
   const float EPS = 1e-7f;
   glm::vec3 e1 = tri.p1 - tri.p0;
   glm::vec3 e2 = tri.p2 - tri.p0;
@@ -34,62 +32,12 @@ bool RayTracer::intersectTriangle(const glm::vec3& ro, const glm::vec3& rd,
   return t > EPS;
 }
 
-// bool RayTracer::intersectScene(const RTScene& scene, const glm::vec3& ro, const glm::vec3& rd, Hit& hit) const {
-//   bool any = false;
-
-//   for (const auto& tri : scene.tris) {
-//     float t, u, v;
-//     if (intersectTriangle(ro, rd, tri, t, u, v)) {
-//       if (t < hit.t) {
-//         any = true;
-//         hit.t = t;
-//         hit.p = ro + t * rd;
-
-//         float w = 1.f - u - v;
-//         glm::vec3 n = w * tri.n0 + u * tri.n1 + v * tri.n2;
-//         hit.n = glm::normalize(n);
-
-//         hit.matId = tri.matId;
-//       }
-//     }
-//   }
-//   return any;
-// }
-
-// bool RayTracer::intersectScene(const RTScene& scene,
-//                                const glm::vec3& ro, const glm::vec3& rd,
-//                                Hit& hit, float tMaxLimit) const
-// {
-//   bool any = false;
-
-//   for (const auto& tri : scene.tris) {
-//     float t, u, v;
-//     if (intersectTriangle(ro, rd, tri, t, u, v)) {
-//       if (t < hit.t && t < tMaxLimit) {
-//         any = true;
-//         hit.t = t;
-//         hit.p = ro + t * rd;
-
-//         float w = 1.f - u - v;
-//         glm::vec3 n = w*tri.n0 + u*tri.n1 + v*tri.n2;
-//         hit.n = glm::normalize(n);
-//         hit.matId = tri.matId;
-//       }
-//     }
-//   }
-
-//   return any;
-// }
-
-
 bool RayTracer::intersectScene(const RTScene& scene, const glm::vec3& ro, const glm::vec3& rd, Hit& hit, float tMaxLimit) const {
   return intersectBVH(scene, ro, rd, hit, tMaxLimit);
 }
 
 
-bool RayTracer::isOccluded(const RTScene& scene, const glm::vec3& p, const glm::vec3& n,
-                           const glm::vec3& lightPos) const
-{
+bool RayTracer::isOccluded(const RTScene& scene, const glm::vec3& p, const glm::vec3& n, const glm::vec3& lightPos) const {
   const float EPS = 1e-4f;
   glm::vec3 ro = p + EPS * n;
   glm::vec3 toL = lightPos - ro;
@@ -98,11 +46,6 @@ bool RayTracer::isOccluded(const RTScene& scene, const glm::vec3& p, const glm::
 
   Hit h;
   return intersectScene(scene, ro, rd, h, distToL - 1e-3f);
-
-//   if (intersectScene(scene, ro, rd, h)) {
-//     return h.t < distToL;
-//   }
-//   return false;
 }
 
 std::vector<glm::vec3> RayTracer::render(const RTScene& scene, const RTCamera& cam, const RTLight& light) const {
@@ -143,10 +86,14 @@ std::vector<glm::vec3> RayTracer::render(const RTScene& scene, const RTCamera& c
 
         float vis = isOccluded(scene, hit.p, hit.n, light.position) ? 0.f : 1.f;
 
+        glm::vec3 albedo = mat.albedo;
+        if (mat.useTexture && mat.texId >= 0) {
+            albedo *= scene.textures[mat.texId].sample(hit.uv);
+        }
         // small ambient to avoid pure black (temporary; later replaced by env lighting)
-        glm::vec3 ambient = 0.03f * mat.albedo;
+        glm::vec3 ambient = 0.03f * albedo;
 
-        col = ambient + mat.albedo * Li * ndotl * vis;
+        col = ambient + albedo * Li * ndotl * vis;
 
       }
 
@@ -362,7 +309,8 @@ bool RayTracer::intersectBVH(const RTScene& scene, const glm::vec3& ro, const gl
             any = true;
             hit.t = t;
             hit.p = ro + t * rd;
-            float w = 1.f - u - v;
+            float w = 1.0f - u - v;
+            hit.uv = w*tri.uv0 + u*tri.uv1 + v*tri.uv2;
             glm::vec3 n = w*tri.n0 + u*tri.n1 + v*tri.n2;
             hit.n = glm::normalize(n);
             hit.matId = tri.matId;

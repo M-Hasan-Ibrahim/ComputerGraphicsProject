@@ -13,6 +13,8 @@ add_executable(
   src/Mesh.cpp
   src/RayTracer.cpp
   src/EnvMap.cpp
+  src/stb_image_impl.cpp
+  src/Texture2D.cpp
   src/ShaderProgram.cpp)
 
 

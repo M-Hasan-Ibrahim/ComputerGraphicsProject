@@ -46,8 +46,8 @@
 
 #include "RayTracer.h"
 #include "EnvMap.h"
+#include "Texture2D.h"
 
-#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 const std::string DEFAULT_MESH_FILENAME("data/frog1.obj");
@@ -763,6 +763,8 @@ static void appendMeshToRTScene(RTScene& rt, const Mesh& mesh, const glm::mat4& 
   const auto& P = mesh.vertexPositions();
   const auto& N = mesh.vertexNormals();
   const auto& T = mesh.triangleIndices();
+  const auto& UV = mesh.vertexTexCoords();
+
 
   for (size_t i = 0; i < T.size(); ++i) {
     glm::uvec3 triIdx = T[i];
@@ -775,6 +777,15 @@ static void appendMeshToRTScene(RTScene& rt, const Mesh& mesh, const glm::mat4& 
     };
 
     RTTriangle tri;
+
+    if(!UV.empty()) {
+      tri.uv0 = UV[triIdx[0]];
+      tri.uv1 = UV[triIdx[1]];
+      tri.uv2 = UV[triIdx[2]];
+    } else {
+      tri.uv0 = tri.uv1 = tri.uv2 = glm::vec2(0.0f);
+    }
+
     tri.p0 = xformP(triIdx[0]);
     tri.p1 = xformP(triIdx[1]);
     tri.p2 = xformP(triIdx[2]);
@@ -843,31 +854,52 @@ int main(int argc, char **argv)
       int W = 800, H = 600;
 
       RTScene rt;
-      
+
       rt.mats.clear();
+      rt.textures.clear();
 
-      rt.mats.push_back(RTMaterial());
-      rt.mats.back().albedo = glm::vec3(0.8f);
-      rt.mats.back().shadowCatcher = false;
+      int texWall = (int)rt.textures.size();
+      rt.textures.push_back(Texture2D());
+      rt.textures.back().load("data/rock_back_texture.png", true);
 
+      int texStage = (int)rt.textures.size();
+      rt.textures.push_back(Texture2D());
+      rt.textures.back().load("data/wood_table_diff_2k.jpg", true);
+
+      // Rock
       int matRock = (int)rt.mats.size();
       rt.mats.push_back(RTMaterial());
       rt.mats.back().albedo = glm::vec3(0.65f);
       rt.mats.back().shadowCatcher = false;
+      rt.mats.back().useTexture = false;
+      rt.mats.back().texId = -1;
 
-      int matWood = (int)rt.mats.size();
+      // Backwall
+      int matWall = (int)rt.mats.size();
       rt.mats.push_back(RTMaterial());
-      rt.mats.back().albedo = glm::vec3(0.6f, 0.45f, 0.25f);
+      rt.mats.back().albedo = glm::vec3(1.0f);
       rt.mats.back().shadowCatcher = false;
+      rt.mats.back().useTexture = true;
+      rt.mats.back().texId = texWall;
 
+      // Stage
+      int matStage = (int)rt.mats.size();
+      rt.mats.push_back(RTMaterial());
+      rt.mats.back().albedo = glm::vec3(1.0f);
+      rt.mats.back().shadowCatcher = false;
+      rt.mats.back().useTexture = true;
+      rt.mats.back().texId = texStage;
+
+      // Frog
       int matFrog = (int)rt.mats.size();
       rt.mats.push_back(RTMaterial());
       rt.mats.back().albedo = glm::vec3(0.35f, 0.75f, 0.35f);
       rt.mats.back().shadowCatcher = false;
+      rt.mats.back().useTexture = false;
+      rt.mats.back().texId = -1;
 
-
-      appendMeshToRTScene(rt, *g_scene.back_rock, g_scene.backRockMat, matRock);
-      appendMeshToRTScene(rt, *g_scene.stage, g_scene.stageMat, matWood);
+      appendMeshToRTScene(rt, *g_scene.back_rock, g_scene.backRockMat, matWall);
+      appendMeshToRTScene(rt, *g_scene.stage, g_scene.stageMat, matStage);
       appendMeshToRTScene(rt, *g_scene.rock, g_scene.rockMat1, matRock);
       appendMeshToRTScene(rt, *g_scene.rock, g_scene.rockMat2, matRock);
       appendMeshToRTScene(rt, *g_scene.frog, g_scene.frogMat, matFrog);
