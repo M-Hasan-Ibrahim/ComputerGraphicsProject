@@ -11,7 +11,7 @@ struct RTMaterial {
   glm::vec3 albedo = glm::vec3(0.8f);
   bool useTexture = false;
   int texId = -1;
-  bool shadowCatcher = false;
+  bool shadowCatcher = true;
 };
 
 struct RTTriangle {
@@ -54,10 +54,22 @@ public:
 
   void setEnvMap(const EnvMap* env) { _env = env; }
 
+  void setGround(float y, int matId, float strength=0.6f) {
+    groundY = y;
+    groundMatId = matId;
+    shadowStrength = strength;
+  }
+
+
 private:
   int _w = 0, _h = 0;
 
   const EnvMap* _env = nullptr;
+
+  float groundY = -0.55f;
+  int groundMatId = -1;
+  float shadowStrength = 0.6f;
+
 
   struct Hit {
     float t = 1e30f;
@@ -70,6 +82,11 @@ private:
   static bool intersectTriangle(const glm::vec3& ro, const glm::vec3& rd, const RTTriangle& tri, float& t, float& u, float& v);
 
   bool intersectScene(const RTScene& scene, const glm::vec3& ro, const glm::vec3& rd, Hit& hit, float tMaxLimit) const;
+
+  // static bool intersectPlaneY(const glm::vec3& ro, const glm::vec3& rd, float y, float& tOut);
+  
+
+  bool intersectBVH(const RTScene& scene, const glm::vec3& ro, const glm::vec3& rd, Hit& hit, float tMaxLimit) const;
 
   glm::vec3 background(const glm::vec3& rd) const;
 
@@ -98,9 +115,10 @@ private:
 
   static bool intersectAABB(const glm::vec3& ro, const glm::vec3& rd, const AABB& box, float& tminOut, float& tmaxOut);
 
+
+
   int buildBVHRecursive(const RTScene& scene, int start, int count);
   
-  bool intersectBVH(const RTScene& scene, const glm::vec3& ro, const glm::vec3& rd, Hit& hit, float tMaxLimit) const;
-
+  
 
 };

@@ -74,7 +74,6 @@ float g_appTimer = 0.0;
 float g_appTimerLastColckTime;
 bool g_appTimerStoppedP = true;
 
-// TODO: textures
 unsigned int g_availableTextureSlot = 0;
 
 //sky view
@@ -304,7 +303,6 @@ struct Scene {
   {
 
     //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    // TODO: first, render the shadow maps
     glEnable(GL_CULL_FACE);
 
     // shadomMapShader->use();
@@ -313,7 +311,6 @@ struct Scene {
     //   light.setupCameraForShadowMapping(shadomMapShader, scene_center, scene_radius*1.5f);
     //   light.bindShadowMap();
 
-    //   // TODO: render the objects in the scene
 
     //   if(saveShadowMapsPpm) {
     //     light.shadowMap.savePpmFile(std::string("shadom_map_")+std::to_string(i)+std::string(".ppm"));
@@ -324,7 +321,6 @@ struct Scene {
     //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    // TODO: second, render the scene
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, g_windowWidth, g_windowHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
@@ -379,7 +375,7 @@ struct Scene {
 
 
     // back-wall
-    mainShader->set("material.albedo", glm::vec3(0.29, 0.51, 0.82)); // default value if the texture was not loaded
+    mainShader->set("material.albedo", glm::vec3(0.29, 0.51, 0.82));
     mainShader->set("modelMat", backRockMat);
     mainShader->set("normMat", glm::mat3(glm::inverseTranspose(backRockMat)));
 
@@ -416,9 +412,7 @@ struct Scene {
       mainShader->set("material.albedo", glm::vec3(0.6f, 0.6f, 0.6f));
       mainShader->set("modelMat", M);
       mainShader->set("normMat", glm::mat3(glm::inverseTranspose(M)));
-      // glDisable(GL_CULL_FACE);
       rock->render();
-      // glEnable(GL_CULL_FACE);
     };
     drawRock(rockMat1);
     drawRock(rockMat2);
@@ -701,7 +695,6 @@ void initScene(const std::string &meshFilename)
     g_scene.frogMat = stageTranslate * glm::translate(glm::mat4(1.0f), glm::vec3(-1.2f, -0.46f, 1.95f)) * frogRotate * glm::scale(glm::mat4(1.0f), glm::vec3(0.015f));
   }
 
-  // TODO: Load and setup textures
   GLuint back_rockTex = loadTextureFromFileToGPU("data/rock_back_texture.png");
   g_scene.back_rockTexture = back_rockTex;
 
@@ -741,7 +734,7 @@ void initScene(const std::string &meshFilename)
   g_scene.lights.push_back(Light());
   Light &L = g_scene.lights[0];
 
-  L.position  = glm::vec3(-2.0f, 1.1f, -3.5f);
+  L.position  = glm::vec3(-2.0f, 2.1f, -3.5f);
   L.color     = glm::vec3(1.0f, 1.0f, 1.0f);
   L.intensity = 1.0f;
 
@@ -898,6 +891,14 @@ int main(int argc, char **argv)
       rt.mats.back().useTexture = false;
       rt.mats.back().texId = -1;
 
+      // ground
+      int matGround = (int)rt.mats.size();
+      rt.mats.push_back(RTMaterial());
+      rt.mats.back().albedo = glm::vec3(1.0f);
+      rt.mats.back().shadowCatcher = true;
+      rt.mats.back().useTexture = false;
+      rt.mats.back().texId = -1;
+
       appendMeshToRTScene(rt, *g_scene.back_rock, g_scene.backRockMat, matWall);
       appendMeshToRTScene(rt, *g_scene.stage, g_scene.stageMat, matStage);
       appendMeshToRTScene(rt, *g_scene.rock, g_scene.rockMat1, matRock);
@@ -916,7 +917,7 @@ int main(int argc, char **argv)
       glm::vec3 forward = -glm::vec3(invV[2]);
 
       RTLight L;
-      L.position  = cam.pos + (-1.5f)*right + (1.1f)*up + (3.0f)*forward;
+      L.position  = cam.pos + (-1.5f)*right + (2.1f)*up + (3.0f)*forward;
       L.color     = glm::vec3(1.f);
       L.intensity = 20.0f;
       
@@ -928,6 +929,7 @@ int main(int argc, char **argv)
       RayTracer tracer(W, H);
       tracer.setEnvMap(&env);
       tracer.buildBVH(rt);
+      tracer.setGround(-1.925f, matGround, 0.6f);
 
       auto pixels = tracer.render(rt, cam, L);
       RayTracer::savePPM("raytrace.ppm", pixels, W, H);

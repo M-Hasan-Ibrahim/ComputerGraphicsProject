@@ -48,6 +48,16 @@ bool RayTracer::isOccluded(const RTScene& scene, const glm::vec3& p, const glm::
   return intersectScene(scene, ro, rd, h, distToL - 1e-3f);
 }
 
+static bool intersectPlaneY(const glm::vec3& ro, const glm::vec3& rd, float y, float& tOut) {
+  float denom = rd.y;
+  if (std::abs(denom) < 1e-6f) return false;
+  float t = (y - ro.y) / denom;
+  if (t <= 1e-4f) return false;
+  tOut = t;
+  return true;
+}
+
+
 std::vector<glm::vec3> RayTracer::render(const RTScene& scene, const RTCamera& cam, const RTLight& light) const {
   std::vector<glm::vec3> img(_w * _h, glm::vec3(0));
 
@@ -59,6 +69,7 @@ std::vector<glm::vec3> RayTracer::render(const RTScene& scene, const RTCamera& c
       float px = ( (x + 0.5f) / float(_w) ) * 2.f - 1.f;
       float py = 1.f - ( (y + 0.5f) / float(_h) ) * 2.f;
 
+
       px *= cam.aspect * tanHalf;
       py *= tanHalf;
 
@@ -67,11 +78,93 @@ std::vector<glm::vec3> RayTracer::render(const RTScene& scene, const RTCamera& c
       glm::vec3 rd = glm::normalize(glm::vec3(cam.invView * glm::vec4(dirCam, 0.f)));
       glm::vec3 ro = cam.pos;
 
-      Hit hit;
+      // Hit hit;
+      // glm::vec3 col = background(rd);
+
+      // if (intersectScene(scene, ro, rd, hit, 1e30f)) {
+      //   const RTMaterial& mat = scene.mats[std::max(0, hit.matId)];
+
+      //   glm::vec3 Lvec = light.position - hit.p;
+      //   float dist2 = glm::dot(Lvec, Lvec);
+      //   float dist  = std::sqrt(dist2);
+      //   glm::vec3 wi = Lvec / std::max(dist, 1e-6f);
+
+      //   float ndotl = std::max(0.f, glm::dot(hit.n, wi));
+
+      //   float atten = 1.0f / std::max(dist2, 1e-4f);
+
+      //   glm::vec3 Li = light.color * (light.intensity * atten);
+
+      //   float vis = isOccluded(scene, hit.p, hit.n, light.position) ? 0.f : 1.f;
+
+      //   glm::vec3 albedo = mat.albedo;
+      //   if (mat.useTexture && mat.texId >= 0) {
+      //       albedo *= scene.textures[mat.texId].sample(hit.uv);
+      //   }
+      //   // small ambient to avoid pure black (temporary; later replaced by env lighting)
+      //   glm::vec3 ambient = 0.03f * albedo;
+
+      //   col = ambient + albedo * Li * ndotl * vis;
+
+      // }
+
+      // img[y * _w + x] = col;
+
+    // }
+
+      int pix = y * _w + x;
+
       glm::vec3 col = background(rd);
 
-      if (intersectScene(scene, ro, rd, hit, 1e30f)) {
-        const RTMaterial& mat = scene.mats[std::max(0, hit.matId)];
+      Hit hitTri;
+      bool hitScene = intersectScene(scene, ro, rd, hitTri, 1e30f);
+
+      float groundY = -1.925f;
+      float tPlane;
+      bool hitPlane = intersectPlaneY(ro, rd, groundY, tPlane);
+
+      if (!hitScene && !hitPlane) {
+        img[pix] = col;
+        continue;
+      }
+
+      Hit hit;
+      bool hitIsPlane = false;
+
+      if (hitPlane && (!hitScene || tPlane < hitTri.t)) {
+        hitIsPlane = true;
+        hit.t = tPlane;
+        hit.p = ro + tPlane * rd;
+        hit.n = glm::vec3(0,1,0);
+        hit.uv = glm::vec2(0.0f);
+        hit.matId = -1;
+      } else {
+        hit = hitTri;
+      }
+
+      if (hitIsPlane) {
+        if (rd.y >= 0.0f) {
+          img[pix] = background(rd);
+          continue;
+        }
+
+        glm::vec3 bg = background(rd);
+
+        bool occ = isOccluded(scene, hit.p, hit.n, light.position);
+        float vis = occ ? 0.0f : 1.0f;
+
+        float strength = 0.6f;
+        float factor = 1.0f - strength * (1.0f - vis);
+
+        img[pix] = bg * factor;
+        continue;
+        // float vis = isOccluded(scene, hit.p, hit.n, light.position) ? 0.0f : 1.0f;
+        // img[pix] = glm::vec3(vis); // white=lit, black=shadow
+        // continue;
+      }
+
+      {
+        const RTMaterial& mat = scene.mats[hit.matId];
 
         glm::vec3 Lvec = light.position - hit.p;
         float dist2 = glm::dot(Lvec, Lvec);
@@ -79,28 +172,24 @@ std::vector<glm::vec3> RayTracer::render(const RTScene& scene, const RTCamera& c
         glm::vec3 wi = Lvec / std::max(dist, 1e-6f);
 
         float ndotl = std::max(0.f, glm::dot(hit.n, wi));
-
         float atten = 1.0f / std::max(dist2, 1e-4f);
-
         glm::vec3 Li = light.color * (light.intensity * atten);
 
         float vis = isOccluded(scene, hit.p, hit.n, light.position) ? 0.f : 1.f;
 
         glm::vec3 albedo = mat.albedo;
         if (mat.useTexture && mat.texId >= 0) {
-            albedo *= scene.textures[mat.texId].sample(hit.uv);
+          albedo *= scene.textures[mat.texId].sample(hit.uv);
         }
-        // small ambient to avoid pure black (temporary; later replaced by env lighting)
-        glm::vec3 ambient = 0.03f * albedo;
 
+        glm::vec3 ambient = 0.03f * albedo;
         col = ambient + albedo * Li * ndotl * vis;
 
+        img[pix] = col;
       }
-
-      img[y * _w + x] = col;
-
     }
   }
+
   return img;
 }
 
