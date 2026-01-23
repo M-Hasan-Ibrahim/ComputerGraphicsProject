@@ -83,6 +83,14 @@ std::shared_ptr<ShaderProgram> g_skyShader = nullptr;
 
 bool g_doRayTrace = false;
 
+static bool g_showRayTrace = false;
+static GLuint g_rtTex = 0;
+static int g_rtW = 800, g_rtH = 600;
+
+static std::shared_ptr<ShaderProgram> g_rtShader;
+static GLuint g_rtVao = 0;
+
+
 
 
 GLuint loadTextureFromFileToGPU(const std::string &filename)
@@ -302,25 +310,26 @@ struct Scene {
   void render()
   {
 
-    //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    if (g_showRayTrace) {
+      glDisable(GL_DEPTH_TEST);
+
+      g_rtShader->use();
+      glActiveTexture(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, g_rtTex);
+      g_rtShader->set("rtTex", 0);
+
+      glBindVertexArray(g_rtVao);
+      glDrawArrays(GL_TRIANGLES, 0, 3);
+      glBindVertexArray(0);
+
+      glBindTexture(GL_TEXTURE_2D, 0);
+      glEnable(GL_DEPTH_TEST);
+      return; // IMPORTANT: skip raster scene
+    }
+
     glEnable(GL_CULL_FACE);
 
-    // shadomMapShader->use();
-    // for(int i=0; i<lights.size(); ++i) {
-    //   Light &light = lights[i];
-    //   light.setupCameraForShadowMapping(shadomMapShader, scene_center, scene_radius*1.5f);
-    //   light.bindShadowMap();
-
-
-    //   if(saveShadowMapsPpm) {
-    //     light.shadowMap.savePpmFile(std::string("shadom_map_")+std::to_string(i)+std::string(".ppm"));
-    //   }
-    // }
-    // shadomMapShader->stop();
-    // saveShadowMapsPpm = false;
-    //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
-    //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, g_windowWidth, g_windowHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
@@ -447,6 +456,7 @@ void printHelp()
     "    * S: save shadow maps into PPM files" << std::endl <<
     "    * F1: toggle wireframe/surface rendering" << std::endl <<
     "    * R: ray trace once (writes raytrace.ppm)" << std::endl <<
+    "    * K: toggle ray tracing" << std::endl <<
     "    * ESC: quit the program" << std::endl;
 }
 
@@ -478,6 +488,9 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     glfwSetWindowShouldClose(window, true); // Closes the application if the escape key is pressed
   } else if(action == GLFW_PRESS && key == GLFW_KEY_R) {
     g_doRayTrace = true;
+
+  } else if (key == GLFW_KEY_K && action == GLFW_PRESS) {
+    g_showRayTrace = false;
   }
 }
 
@@ -750,6 +763,29 @@ void initScene(const std::string &meshFilename)
   g_cam->setFar(12.0*g_meshScale);
 }
 
+static void initRaytraceDisplay(){
+  // shader to show raytraced texture
+  g_rtShader = ShaderProgram::genBasicShaderProgram(
+    "src/vertexShaderRaytrace.glsl",
+    "src/fragmentShaderRaytrace.glsl"
+  );
+
+  // fullscreen triangle VAO (no VBO)
+  glGenVertexArrays(1, &g_rtVao);
+
+  // raytrace texture (float RGB)
+  glGenTextures(1, &g_rtTex);
+  glBindTexture(GL_TEXTURE_2D, g_rtTex);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, g_rtW, g_rtH, 0, GL_RGB, GL_FLOAT, nullptr);
+  glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+
+
 static void appendMeshToRTScene(RTScene& rt, const Mesh& mesh, const glm::mat4& modelMat, int matId){
   glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(modelMat)));
 
@@ -838,13 +874,14 @@ int main(int argc, char **argv)
   if(argc > 2) usage(argv[0]);
   // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
   init(argc==1 ? DEFAULT_MESH_FILENAME : argv[1]);
+  initRaytraceDisplay(); 
   while(!glfwWindowShouldClose(g_window)) {
     update(static_cast<float>(glfwGetTime()));
     render();
 
     if (g_doRayTrace) {
       g_doRayTrace = false;
-      int W = 800, H = 600;
+      int W = g_rtW, H = g_rtH;
 
       RTScene rt;
 
@@ -932,9 +969,12 @@ int main(int argc, char **argv)
       tracer.setGround(-1.925f, matGround, 0.6f);
 
       auto pixels = tracer.render(rt, cam, L);
-      RayTracer::savePPM("raytrace.ppm", pixels, W, H);
+      
+      glBindTexture(GL_TEXTURE_2D, g_rtTex);
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, W, H, GL_RGB, GL_FLOAT, pixels.data());
+      glBindTexture(GL_TEXTURE_2D, 0);
 
-      std::cout << "[RayTrace] wrote raytrace.ppm\n";
+      g_showRayTrace = true;
     }
 
 
