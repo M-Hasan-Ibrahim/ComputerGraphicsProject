@@ -11,6 +11,8 @@ add_executable(
   src/main.cpp
   src/Error.cpp
   src/Mesh.cpp
+  src/RayTracer.cpp
+  src/EnvMap.cpp
   src/ShaderProgram.cpp)
 
 

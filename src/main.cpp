@@ -44,6 +44,8 @@
 #include "Camera.h"
 #include "Mesh.h"
 
+#include "RayTracer.h"
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -78,6 +80,8 @@ unsigned int g_availableTextureSlot = 0;
 GLuint g_skyTex = 0;
 GLuint g_skyVao = 0;
 std::shared_ptr<ShaderProgram> g_skyShader = nullptr;
+
+bool g_doRayTrace = false;
 
 
 
@@ -447,6 +451,7 @@ void printHelp()
     "    * T: toggle animation" << std::endl <<
     "    * S: save shadow maps into PPM files" << std::endl <<
     "    * F1: toggle wireframe/surface rendering" << std::endl <<
+    "    * R: ray trace once (writes raytrace.ppm)" << std::endl <<
     "    * ESC: quit the program" << std::endl;
 }
 
@@ -476,6 +481,8 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
     glPolygonMode(GL_FRONT_AND_BACK, mode[1] == GL_FILL ? GL_LINE : GL_FILL);
   } else if(action == GLFW_PRESS && key == GLFW_KEY_ESCAPE) {
     glfwSetWindowShouldClose(window, true); // Closes the application if the escape key is pressed
+  } else if(action == GLFW_PRESS && key == GLFW_KEY_R) {
+    g_doRayTrace = true;
   }
 }
 
@@ -656,7 +663,7 @@ void initScene(const std::string &meshFilename)
     //frog
     g_scene.frog = std::make_shared<Mesh>();
     try{
-      loadOBJ("data/frog1.obj", g_scene.frog);
+      loadOBJ("data/frog_decimated.obj", g_scene.frog);
     }catch(std::exception &e){
       exitOnCriticalError(std::string("[Error loading frog mesh]") + e.what());
     }
@@ -733,7 +740,7 @@ void initScene(const std::string &meshFilename)
   g_scene.lights.push_back(Light());
   Light &L = g_scene.lights[0];
 
-  L.position  = glm::vec3(-2.0f, 2.5f, -3.5f);
+  L.position  = glm::vec3(-2.0f, 1.1f, -3.5f);
   L.color     = glm::vec3(1.0f, 1.0f, 1.0f);
   L.intensity = 1.0f;
 
@@ -748,6 +755,38 @@ void initScene(const std::string &meshFilename)
   g_cam->setNear(g_meshScale/100.f);
   g_cam->setFar(12.0*g_meshScale);
 }
+
+static void appendMeshToRTScene(RTScene& rt, const Mesh& mesh, const glm::mat4& modelMat, int matId){
+  glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(modelMat)));
+
+  const auto& P = mesh.vertexPositions();
+  const auto& N = mesh.vertexNormals();
+  const auto& T = mesh.triangleIndices();
+
+  for (size_t i = 0; i < T.size(); ++i) {
+    glm::uvec3 triIdx = T[i];
+
+    auto xformP = [&](uint32_t idx){
+      return glm::vec3(modelMat * glm::vec4(P[idx], 1.f));
+    };
+    auto xformN = [&](uint32_t idx){
+      return glm::normalize(normalMat * N[idx]);
+    };
+
+    RTTriangle tri;
+    tri.p0 = xformP(triIdx[0]);
+    tri.p1 = xformP(triIdx[1]);
+    tri.p2 = xformP(triIdx[2]);
+    tri.n0 = xformN(triIdx[0]);
+    tri.n1 = xformN(triIdx[1]);
+    tri.n2 = xformN(triIdx[2]);
+    tri.matId = matId;
+
+    rt.tris.push_back(tri);
+  }
+
+}
+
 
 void init(const std::string &meshFilename)
 {
@@ -797,6 +836,70 @@ int main(int argc, char **argv)
   while(!glfwWindowShouldClose(g_window)) {
     update(static_cast<float>(glfwGetTime()));
     render();
+
+    if (g_doRayTrace) {
+      g_doRayTrace = false;
+      int W = 800, H = 600;
+
+      RTScene rt;
+      
+      rt.mats.clear();
+
+      rt.mats.push_back(RTMaterial());
+      rt.mats.back().albedo = glm::vec3(0.8f);
+      rt.mats.back().shadowCatcher = false;
+
+      int matRock = (int)rt.mats.size();
+      rt.mats.push_back(RTMaterial());
+      rt.mats.back().albedo = glm::vec3(0.65f);
+      rt.mats.back().shadowCatcher = false;
+
+      int matWood = (int)rt.mats.size();
+      rt.mats.push_back(RTMaterial());
+      rt.mats.back().albedo = glm::vec3(0.6f, 0.45f, 0.25f);
+      rt.mats.back().shadowCatcher = false;
+
+      int matFrog = (int)rt.mats.size();
+      rt.mats.push_back(RTMaterial());
+      rt.mats.back().albedo = glm::vec3(0.35f, 0.75f, 0.35f);
+      rt.mats.back().shadowCatcher = false;
+
+
+      appendMeshToRTScene(rt, *g_scene.back_rock, g_scene.backRockMat, matRock);
+      appendMeshToRTScene(rt, *g_scene.stage, g_scene.stageMat, matWood);
+      appendMeshToRTScene(rt, *g_scene.rock, g_scene.rockMat1, matRock);
+      appendMeshToRTScene(rt, *g_scene.rock, g_scene.rockMat2, matRock);
+      appendMeshToRTScene(rt, *g_scene.frog, g_scene.frogMat, matFrog);
+
+      RTCamera cam;
+      cam.pos = g_cam->getPosition();
+      cam.invView = glm::inverse(g_cam->computeViewMatrix());
+      cam.fovYDegrees = g_cam->getFov();
+      cam.aspect = g_cam->getAspectRatio();
+
+      glm::mat4 invV = cam.invView;
+      glm::vec3 right = glm::vec3(invV[0]);
+      glm::vec3 up = glm::vec3(invV[1]);
+      glm::vec3 forward = -glm::vec3(invV[2]);
+
+      RTLight L;
+      L.position  = cam.pos + (-1.5f)*right + (1.1f)*up + (3.0f)*forward;
+      L.color     = glm::vec3(1.f);
+      L.intensity = 20.0f;
+
+      
+      RayTracer tracer(W, H);
+      
+      std::cout << "[RT] tris=" << rt.tris.size() << std::endl;
+      tracer.buildBVH(rt);
+
+      auto pixels = tracer.render(rt, cam, L);
+      RayTracer::savePPM("raytrace.ppm", pixels, W, H);
+
+      std::cout << "[RayTrace] wrote raytrace.ppm\n";
+    }
+
+
     glfwSwapBuffers(g_window);
     glfwPollEvents();
   }
