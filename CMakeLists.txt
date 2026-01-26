@@ -15,6 +15,7 @@ add_executable(
   src/EnvMap.cpp
   src/stb_image_impl.cpp
   src/Texture2D.cpp
+  src/FrogSelectAnim.cpp
   src/ShaderProgram.cpp)
 
 
