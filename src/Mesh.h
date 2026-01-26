@@ -38,6 +38,11 @@ public:
 
   void addPlan(float square_half_side = 1.0f);
 
+  void taubinSmooth(int iterations = 10, float lambda = 0.5f, float mu = -0.53f);
+  void updatePositionsAndNormalsOnGPU();
+  int countDegenerateTriangles(float eps = 1e-12f) const;
+
+
 private:
   std::vector<glm::vec3> _vertexPositions;
   std::vector<glm::vec3> _vertexNormals;

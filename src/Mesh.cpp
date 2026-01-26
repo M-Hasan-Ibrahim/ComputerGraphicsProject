@@ -16,6 +16,8 @@
 
 #include <unordered_map>
 #include <cfloat>
+#include <limits>
+
 
 
 Mesh::~Mesh()
@@ -49,10 +51,18 @@ void Mesh::recomputePerVertexNormals(bool angleBased)
     _vertexNormals[t[1]] += n_t;
     _vertexNormals[t[2]] += n_t;
   }
+  // for(unsigned int nIt = 0 ; nIt < _vertexNormals.size() ; ++nIt) {
+  //   // glm::normalize(_vertexNormals[nIt]);
+  //   _vertexNormals[nIt] = glm::normalize(_vertexNormals[nIt]);
+  // }
+
   for(unsigned int nIt = 0 ; nIt < _vertexNormals.size() ; ++nIt) {
-    // glm::normalize(_vertexNormals[nIt]);
-    _vertexNormals[nIt] = glm::normalize(_vertexNormals[nIt]);
+    float len = glm::length(_vertexNormals[nIt]);
+    if (len < 1e-12f) _vertexNormals[nIt] = glm::vec3(0, 1, 0);  // fallback normal
+    else _vertexNormals[nIt] /= len;
   }
+
+
 }
 
 void Mesh::recomputePerVertexTextureCoordinates()
@@ -260,6 +270,19 @@ void loadOFF(const std::string &filename, std::shared_ptr<Mesh> meshPtr)
   std::cout << " > Mesh <" << filename << "> loaded" <<  std::endl;
 }
 
+void Mesh::updatePositionsAndNormalsOnGPU()
+{
+  if (_posVbo == 0 || _normalVbo == 0) return;
+
+  size_t posSize = sizeof(glm::vec3) * _vertexPositions.size();
+  size_t nrmSize = sizeof(glm::vec3) * _vertexNormals.size();
+
+  glNamedBufferSubData(_posVbo, 0, posSize, _vertexPositions.data());
+  glNamedBufferSubData(_normalVbo, 0, nrmSize, _vertexNormals.data());
+}
+
+
+
 struct Vertex {
   glm::vec3 p;
   glm::vec3 n;
@@ -423,3 +446,104 @@ void loadOBJ(const std::string& filename, std::shared_ptr<Mesh> mesh)
 
 }
 
+
+static inline bool isFinite3(const glm::vec3& v) {
+  return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+}
+
+void Mesh::taubinSmooth(int iterations, float lambda, float mu)
+{
+  if (_vertexPositions.empty() || _triangleIndices.empty()) return;
+  if (iterations <= 0) return;
+
+  const size_t nV = _vertexPositions.size();
+
+  // 1-ring adjacency (uniform)
+  std::vector<std::vector<unsigned int>> adj(nV);
+  for (const auto& tri : _triangleIndices) {
+    unsigned int a = tri.x, b = tri.y, c = tri.z;
+    adj[a].push_back(b); adj[a].push_back(c);
+    adj[b].push_back(a); adj[b].push_back(c);
+    adj[c].push_back(a); adj[c].push_back(b);
+  }
+
+  // scale-aware step cap using average edge length
+  double sumLen = 0.0;
+  size_t cntLen = 0;
+  for (const auto& tri : _triangleIndices) {
+    unsigned int a = tri.x, b = tri.y, c = tri.z;
+    sumLen += glm::length(_vertexPositions[a] - _vertexPositions[b]);
+    sumLen += glm::length(_vertexPositions[b] - _vertexPositions[c]);
+    sumLen += glm::length(_vertexPositions[c] - _vertexPositions[a]);
+    cntLen += 3;
+  }
+  float avgEdge = (cntLen > 0) ? float(sumLen / double(cntLen)) : 1.0f;
+  const float MAX_STEP = 0.05f * avgEdge; // safe cap (5% of avg edge)
+
+  auto laplacianStep = [&](float step) {
+    std::vector<glm::vec3> newP = _vertexPositions;
+
+    for (unsigned int i = 0; i < (unsigned int)nV; ++i) {
+      const auto& nbrs = adj[i];
+      if (nbrs.empty()) continue;
+
+      glm::vec3 mean(0.0f);
+      float wsum = 0.0f;
+
+      for (unsigned int j : nbrs) {
+        mean += _vertexPositions[j];
+        wsum += 1.0f;
+      }
+      mean /= wsum;
+
+      glm::vec3 lap = mean - _vertexPositions[i];
+
+      // clamp displacement (prevents collapse/explosion on tiny geometry)
+      // float l = glm::length(lap);
+      // if (l > MAX_STEP) lap *= (MAX_STEP / l);
+      float minEdge = std::numeric_limits<float>::infinity();
+
+      // compute min edge FIRST
+      for (unsigned int j : nbrs) {
+        float d = glm::length(_vertexPositions[j] - _vertexPositions[i]);
+        if (d > 1e-12f && d < minEdge) minEdge = d;
+      }
+      if (!std::isfinite(minEdge)) continue;
+
+      // now clamp lap using local scale
+      const float LOCAL_MAX_STEP = 0.1f * minEdge;
+
+      float l = glm::length(lap);
+      if (l > LOCAL_MAX_STEP) lap *= (LOCAL_MAX_STEP / l);
+
+      glm::vec3 candidate = _vertexPositions[i] + step * lap;
+      if (isFinite3(candidate)) newP[i] = candidate;
+    }
+
+    // if anything went non-finite, abort update
+    for (const auto& p : newP) {
+      if (!isFinite3(p)) return;
+    }
+
+    _vertexPositions.swap(newP);
+  };
+
+  for (int it = 0; it < iterations; ++it) {
+    laplacianStep(lambda); // smooth
+    laplacianStep(mu);     // unshrink
+  }
+}
+
+
+int Mesh::countDegenerateTriangles(float eps) const
+{
+  int deg = 0;
+  for (const auto& tri : _triangleIndices) {
+    const glm::vec3& a = _vertexPositions[tri.x];
+    const glm::vec3& b = _vertexPositions[tri.y];
+    const glm::vec3& c = _vertexPositions[tri.z];
+    float area2 = glm::length(glm::cross(b - a, c - a)); // twice area
+    if (!std::isfinite(area2) || area2 < eps) deg++;
+  }
+  return deg;
+}

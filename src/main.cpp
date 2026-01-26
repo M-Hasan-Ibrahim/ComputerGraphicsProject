@@ -95,38 +95,6 @@ static std::shared_ptr<ShaderProgram> g_rtShader;
 static GLuint g_rtVao = 0;
 
 
-
-// ---------------- Frog "character select" motion (P toggles) ----------------
-// static bool  g_frogAnimActive = false;
-// static bool  g_frogSelected   = false;   // current state
-// static bool  g_frogTargetSel  = false;   // state after current animation
-// static float g_frogAnimTime   = 0.0f;
-// static float g_frogAnimDur    = 0.9f;    // seconds (tweak)
-
-// static glm::mat4 g_frogBaseMat = glm::mat4(1.0f); // original frog matrix (saved after init)
-// static glm::vec3 g_frogFromPos(0), g_frogToPos(0), g_frogCtrlPos(0);
-
-// static float g_frogScaleHome   = 1.0f;
-// static float g_frogScaleSelect = 0.05f;
-
-// static float g_frogSpinTurns = 0.9f;   // 1.0 = 360°, 0.5 = 180°, 2.0 = 720°
-
-// static inline float clamp01f(float x) { return std::max(0.f, std::min(1.f, x)); }
-// static inline float smoothstep01(float t) { t = clamp01f(t); return t*t*(3.f - 2.f*t); }
-
-// // Quadratic Bezier: (1-t)^2 p0 + 2(1-t)t p1 + t^2 p2
-// static inline glm::vec3 bezier2(const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& p2, float t) {
-//   float a = 1.f - t;
-//   return a*a*p0 + 2.f*a*t*p1 + t*t*p2;
-// }
-
-// // Replace translation of a TRS matrix while keeping rotation+scale
-// static inline glm::mat4 setTranslationKeepRS(const glm::mat4& M, const glm::vec3& pos) {
-//   glm::mat4 RS = M;
-//   RS[3] = glm::vec4(0,0,0,1);          // remove translation
-//   return glm::translate(glm::mat4(1), pos) * RS;
-// }
-
 static FrogSelectAnim g_frogSelect;
 
 
@@ -240,8 +208,6 @@ public:
     glBindFramebuffer(GL_FRAMEBUFFER, _depthMapFbo);
     glClear(GL_DEPTH_BUFFER_BIT);
 
-    // you can now render the geometry, assuming you have set the view matrix
-    // according to the light viewpoint
   }
 
   void free() { glDeleteFramebuffers(1, &_depthMapFbo); }
@@ -405,15 +371,7 @@ struct Scene {
     mainShader->set("viewMat", g_cam->computeViewMatrix());
     mainShader->set("projMat", g_cam->computeProjectionMatrix());
 
-    // lights
-    // for(int i=0; i<lights.size(); ++i) {
-    //   Light &light = lights[i];
-    //   mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].position"), light.position);
-    //   mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].color"), light.color);
-    //   mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].intensity"), light.intensity);
-    //   mainShader->set(std::string("lightSources[")+std::to_string(i)+std::string("].isActive"), 1);
-    // }
-    
+    // lights    
     Light &L = lights[0];
     mainShader->set("light.position",  L.position);
     mainShader->set("light.color",     L.color);
@@ -497,6 +455,7 @@ void printHelp()
     "    * R: ray trace once (writes raytrace.ppm)" << std::endl <<
     "    * K: toggle ray tracing" << std::endl <<
     "    * P: toggle frog animation" << std::endl <<
+    "    * L: apply geometry filtering on frog" << std::endl <<
     "    * ESC: quit the program" << std::endl;
 }
 
@@ -508,49 +467,6 @@ void windowSizeCallback(GLFWwindow *window, int width, int height)
   g_cam->setAspectRatio(static_cast<float>(width)/static_cast<float>(height));
   glViewport(0, 0, (GLint)width, (GLint)height); // Dimension of the rendering region in the window
 }
-
-// void selectFrog(){
-//   if(!g_frogAnimActive) {
-//     g_frogAnimActive = true;
-//     g_frogAnimTime   = 0.0f;
-
-//     glm::vec3 curPos = glm::vec3(g_scene.frogMat[3]);
-//     g_frogFromPos = curPos;
-
-//     // camera basis in world space
-//     glm::mat4 invV = glm::inverse(g_cam->computeViewMatrix());
-//     glm::vec3 right   = glm::normalize(glm::vec3(invV[0]));
-//     glm::vec3 up      = glm::normalize(glm::vec3(invV[1]));
-//     glm::vec3 forward = glm::normalize(-glm::vec3(invV[2]));
-
-//     bool goingToCenter = !g_frogSelected;
-//     g_frogTargetSel = goingToCenter;
-
-//     if(goingToCenter) {
-//       // Put frog on the camera forward axis at same depth => centered on screen
-//       glm::vec3 camPos = g_cam->getPosition();
-//       float dist = glm::dot((curPos - camPos), forward);
-
-
-
-//       // move to camera center line, then push closer/farther and offset in camera axes
-//       float frogForwardExtra = 0.0f;
-//       glm::vec3 frogCenterOffset = glm::vec3(0.0f, -1.2f, -2.5f);
-//       glm::vec3 centerPos = camPos + forward * (dist - frogForwardExtra)
-//                                 + right   * frogCenterOffset.x
-//                                 + up      * frogCenterOffset.y
-//                                 + forward * frogCenterOffset.z;
-
-//       g_frogToPos = centerPos;
-
-//       // curved path (tweak these 2 numbers if you want more/less curve)
-//       g_frogCtrlPos = 0.5f*(g_frogFromPos + g_frogToPos) + 0.35f*up + 0.25f*right;
-//     } else {
-//       g_frogToPos = glm::vec3(g_frogBaseMat[3]);
-//       g_frogCtrlPos = 0.5f*(g_frogFromPos + g_frogToPos) + 0.35f*up - 0.25f*right;
-//     }
-//   }
-// }
 
 
 // Executed each time a key is entered.
@@ -581,7 +497,20 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
       glm::vec3 forward = glm::normalize(-glm::vec3(invV[2]));
 
       g_frogSelect.toggleStart(g_scene.frogMat, g_cam->getPosition(), right, up, forward);
+  } else if(action == GLFW_PRESS && key == GLFW_KEY_L) {
+      if(g_scene.frog) {
+        std::cout << "deg before = " << g_scene.frog->countDegenerateTriangles(1e-12f) << std::endl;
+
+        g_scene.frog->taubinSmooth(10, 0.5f, -0.53f);
+
+        std::cout << "deg after  = " << g_scene.frog->countDegenerateTriangles(1e-12f) << std::endl;
+        
+        // g_scene.frog->updatePositionsAndNormalsOnGPU();
+        g_scene.frog->updatePositionsAndNormalsOnGPU();
+
+      }
   }
+
 }
 
 // Called each time the mouse cursor moves
@@ -711,13 +640,6 @@ void initOpenGL()
   } catch(std::exception &e) {
     exitOnCriticalError(std::string("[Error loading shader program]") + e.what());
   }
-  // try {
-  //   g_scene.shadomMapShader = ShaderProgram::genBasicShaderProgram("src/vertexShaderShadowMap.glsl", "src/fragmentShaderShadowMap.glsl");
-  //   g_scene.shadomMapShader->stop();
-
-  // } catch(std::exception &e) {
-  //   exitOnCriticalError(std::string("[Error loading shader program]") + e.what());
-  // }
 }
 
 void initScene(const std::string &meshFilename)
@@ -805,32 +727,6 @@ void initScene(const std::string &meshFilename)
 
   GLuint stageTex = loadTextureFromFileToGPU("data/wood_table_diff_2k.jpg");
   g_scene.stageTexture = stageTex;
-
-  // // Setup lights
-  // const glm::vec3 pos[3] = {
-  //   glm::vec3(0.0, 1.0, 1.0),
-  //   glm::vec3(0.3, 2.0, 0.4),
-  //   glm::vec3(0.2, 0.4, 2.0),
-  // };
-  // const glm::vec3 col[3] = {
-  //   glm::vec3(1.0, 1.0, 1.0),
-  //   glm::vec3(1.0, 1.0, 0.8),
-  //   glm::vec3(1.0, 1.0, 0.8),
-  // };
-  // unsigned int shadow_map_width=2000, shadow_map_height=2000; // play with these parameters
-  
-  
-  // for(int i=0; i<3; ++i) {
-  //   g_scene.lights.push_back(Light());
-  //   Light &a_light = g_scene.lights[g_scene.lights.size() - 1];
-  //   a_light.position = pos[i];
-  //   a_light.color = col[i];
-  //   a_light.intensity = 0.5f;
-    // a_light.shadowMapTexOnGPU = g_availableTextureSlot;
-    // glActiveTexture(GL_TEXTURE0 + a_light.shadowMapTexOnGPU);
-    // a_light.allocateShadowMapFbo(shadow_map_width, shadow_map_height);
-    // ++g_availableTextureSlot;
-  // }
 
   g_scene.lights.clear();
   g_scene.lights.push_back(Light());
@@ -940,78 +836,9 @@ void render()
   g_scene.render();
 }
 
-// Update any accessible variable based on the current time
-// void update(float currentTime)
-// {
-//   if(!g_appTimerStoppedP) {
-//     // Animate any entity of the program here
-//     float dt = currentTime - g_appTimerLastColckTime;
-//     g_appTimerLastColckTime = currentTime;
-//     g_appTimer += dt;
-//     // <---- Update here what needs to be animated over time ---->
-//   }
-// }
 
 void update(float currentTime)
 {
-  // static float lastTime = currentTime;
-  // float dt = currentTime - lastTime;
-  // lastTime = currentTime;
-
-  // // frog animation runs regardless of the TP timer
-  // if(g_frogAnimActive) {
-  //   g_frogAnimTime += dt;
-  //   float t = g_frogAnimTime / g_frogAnimDur;
-  //   float u = smoothstep01(t);
-
-  //   glm::vec3 pos = bezier2(g_frogFromPos, g_frogCtrlPos, g_frogToPos, u);
-
-  //   // scale
-  //   float s0 = g_frogScaleHome;
-  //   float s1 = g_frogScaleSelect;
-  //   float sc = g_frogTargetSel ? glm::mix(s0, s1, u) : glm::mix(s1, s0, u);
-
-  //   // spin (use u, NOT sc)
-  //   float angle = (g_frogTargetSel)
-  //     ? (-glm::two_pi<float>() * g_frogSpinTurns * u)
-  //     : (-glm::two_pi<float>() * g_frogSpinTurns * (1.0f - u));
-
-  //   glm::quat qSpin = glm::angleAxis(angle, glm::vec3(0,1,0));
-
-  //   // base rotation: remove translation + remove base scale
-  //   glm::mat4 RS = g_frogBaseMat;
-  //   RS[3] = glm::vec4(0,0,0,1);
-
-  //   float invHome = (g_frogScaleHome > 1e-8f) ? (1.0f / g_frogScaleHome) : 1.0f;
-  //   glm::mat4 Ronly = glm::scale(glm::mat4(1.0f), glm::vec3(invHome)) * RS;
-
-  //   glm::quat qBase = glm::quat_cast(glm::mat3(Ronly));
-  //   glm::quat q = qSpin * qBase;
-
-  //   // TRS
-  //   g_scene.frogMat =
-  //     glm::translate(glm::mat4(1.0f), pos) *
-  //     glm::mat4_cast(q) *
-  //     glm::scale(glm::mat4(1.0f), glm::vec3(sc));
-
-  //   if(t >= 1.0f) {
-  //     g_frogAnimActive = false;
-  //     g_frogSelected = g_frogTargetSel;
-
-  //     if(!g_frogSelected) {
-  //       g_scene.frogMat = g_frogBaseMat;
-  //     }
-  //   }
-  // }
-
-
-  // // keep TP timer behavior unchanged
-  // if(!g_appTimerStoppedP) {
-  //   float dt2 = currentTime - g_appTimerLastColckTime;
-  //   g_appTimerLastColckTime = currentTime;
-  //   g_appTimer += dt2;
-  // }
-
   static float lastTime = currentTime;   // stored between frames
   float dt = currentTime - lastTime;     // seconds since last frame
   lastTime = currentTime;
