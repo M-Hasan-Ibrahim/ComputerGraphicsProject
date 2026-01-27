@@ -38,9 +38,12 @@ public:
 
   void addPlan(float square_half_side = 1.0f);
 
-  void taubinSmooth(int iterations = 10, float lambda = 0.5f, float mu = -0.53f);
+  // void taubinSmooth(int iterations = 10, float lambda = 0.5f, float mu = -0.53f);
   void updatePositionsAndNormalsOnGPU();
   int countDegenerateTriangles(float eps = 1e-12f) const;
+
+  void bilateralFilterWelded(int iterations = 2, float spatialSigmaFactor = 2.0f, float normalSigma = 0.6f, float weldEps = 1e-6f);
+
 
 
 private:

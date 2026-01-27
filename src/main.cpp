@@ -499,12 +499,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
       g_frogSelect.toggleStart(g_scene.frogMat, g_cam->getPosition(), right, up, forward);
   } else if(action == GLFW_PRESS && key == GLFW_KEY_L) {
       if(g_scene.frog) {
-        std::cout << "deg before = " << g_scene.frog->countDegenerateTriangles(1e-12f) << std::endl;
-
-        g_scene.frog->taubinSmooth(10, 0.5f, -0.53f);
-
-        std::cout << "deg after  = " << g_scene.frog->countDegenerateTriangles(1e-12f) << std::endl;
-        
+        g_scene.frog->bilateralFilterWelded(2, 2.0f, 0.6f, 1e-6f);
         // g_scene.frog->updatePositionsAndNormalsOnGPU();
         g_scene.frog->updatePositionsAndNormalsOnGPU();
 

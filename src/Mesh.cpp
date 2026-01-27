@@ -51,10 +51,6 @@ void Mesh::recomputePerVertexNormals(bool angleBased)
     _vertexNormals[t[1]] += n_t;
     _vertexNormals[t[2]] += n_t;
   }
-  // for(unsigned int nIt = 0 ; nIt < _vertexNormals.size() ; ++nIt) {
-  //   // glm::normalize(_vertexNormals[nIt]);
-  //   _vertexNormals[nIt] = glm::normalize(_vertexNormals[nIt]);
-  // }
 
   for(unsigned int nIt = 0 ; nIt < _vertexNormals.size() ; ++nIt) {
     float len = glm::length(_vertexNormals[nIt]);
@@ -438,7 +434,9 @@ void loadOBJ(const std::string& filename, std::shared_ptr<Mesh> mesh)
     
   }
 
-  mesh->recomputePerVertexNormals();
+  if(normalsMissing){
+    mesh->recomputePerVertexNormals();
+  }
 
 
   // optional: if you want smoother normals always
@@ -447,92 +445,152 @@ void loadOBJ(const std::string& filename, std::shared_ptr<Mesh> mesh)
 }
 
 
-static inline bool isFinite3(const glm::vec3& v) {
-  return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+static inline float gauss(float x, float sigma) {
+  if (sigma < 1e-12f) return 0.0f;
+  return std::exp(-(x*x) / (2.0f*sigma*sigma));
 }
 
-void Mesh::taubinSmooth(int iterations, float lambda, float mu)
+struct I3 { int x,y,z; };
+struct I3Hash {
+  size_t operator()(I3 const& k) const noexcept {
+    size_t h1 = std::hash<int>{}(k.x);
+    size_t h2 = std::hash<int>{}(k.y);
+    size_t h3 = std::hash<int>{}(k.z);
+    return h1 ^ (h2<<1) ^ (h3<<2);
+  }
+};
+struct I3Eq {
+  bool operator()(I3 const& a, I3 const& b) const noexcept {
+    return a.x==b.x && a.y==b.y && a.z==b.z;
+  }
+};
+
+void Mesh::bilateralFilterWelded(int iterations, float spatialSigmaFactor, float normalSigma, float weldEps)
 {
   if (_vertexPositions.empty() || _triangleIndices.empty()) return;
   if (iterations <= 0) return;
+  if (weldEps <= 0.0f) weldEps = 1e-6f;
 
   const size_t nV = _vertexPositions.size();
 
-  // 1-ring adjacency (uniform)
-  std::vector<std::vector<unsigned int>> adj(nV);
+  // --- 1) Build welded groups by quantized position ---
+  std::unordered_map<I3, int, I3Hash, I3Eq> cellToGroup;
+  cellToGroup.reserve(nV);
+
+  std::vector<int> v2g(nV, -1);
+  std::vector<glm::vec3> gPos;
+  std::vector<glm::vec3> gNrm;
+  std::vector<int> gCount;
+
+  auto toCell = [&](const glm::vec3& p)->I3 {
+    return I3{
+      (int)std::llround(p.x / weldEps),
+      (int)std::llround(p.y / weldEps),
+      (int)std::llround(p.z / weldEps)
+    };
+  };
+
+  for (size_t i = 0; i < nV; ++i) {
+    I3 c = toCell(_vertexPositions[i]);
+    auto it = cellToGroup.find(c);
+    int gid;
+    if (it == cellToGroup.end()) {
+      gid = (int)gPos.size();
+      cellToGroup[c] = gid;
+      gPos.push_back(_vertexPositions[i]);
+      gNrm.push_back(_vertexNormals.empty() ? glm::vec3(0,1,0) : _vertexNormals[i]);
+      gCount.push_back(1);
+    } else {
+      gid = it->second;
+      gPos[gid] += _vertexPositions[i];
+      if (!_vertexNormals.empty()) gNrm[gid] += _vertexNormals[i];
+      gCount[gid] += 1;
+    }
+    v2g[i] = gid;
+  }
+
+  const int nG = (int)gPos.size();
+  for (int g = 0; g < nG; ++g) {
+    gPos[g] /= (float)gCount[g];
+    float ln = glm::length(gNrm[g]);
+    if (ln < 1e-12f) gNrm[g] = glm::vec3(0,1,0);
+    else gNrm[g] /= ln;
+  }
+
+  // --- 2) Build welded adjacency from triangles ---
+  std::vector<std::vector<int>> adj(nG);
   for (const auto& tri : _triangleIndices) {
-    unsigned int a = tri.x, b = tri.y, c = tri.z;
+    int a = v2g[tri.x], b = v2g[tri.y], c = v2g[tri.z];
+    if (a==b || b==c || a==c) continue;
     adj[a].push_back(b); adj[a].push_back(c);
     adj[b].push_back(a); adj[b].push_back(c);
     adj[c].push_back(a); adj[c].push_back(b);
   }
 
-  // scale-aware step cap using average edge length
-  double sumLen = 0.0;
-  size_t cntLen = 0;
-  for (const auto& tri : _triangleIndices) {
-    unsigned int a = tri.x, b = tri.y, c = tri.z;
-    sumLen += glm::length(_vertexPositions[a] - _vertexPositions[b]);
-    sumLen += glm::length(_vertexPositions[b] - _vertexPositions[c]);
-    sumLen += glm::length(_vertexPositions[c] - _vertexPositions[a]);
-    cntLen += 3;
+  // scale-aware spatial sigma using avg welded edge length
+  double sumLen = 0.0; size_t cntLen = 0;
+  for (int g = 0; g < nG; ++g) {
+    for (int nb : adj[g]) {
+      sumLen += glm::length(gPos[nb] - gPos[g]);
+      cntLen++;
+    }
   }
   float avgEdge = (cntLen > 0) ? float(sumLen / double(cntLen)) : 1.0f;
-  const float MAX_STEP = 0.05f * avgEdge; // safe cap (5% of avg edge)
+  float spatialSigma = spatialSigmaFactor * avgEdge;
 
-  auto laplacianStep = [&](float step) {
-    std::vector<glm::vec3> newP = _vertexPositions;
-
-    for (unsigned int i = 0; i < (unsigned int)nV; ++i) {
-      const auto& nbrs = adj[i];
-      if (nbrs.empty()) continue;
-
-      glm::vec3 mean(0.0f);
-      float wsum = 0.0f;
-
-      for (unsigned int j : nbrs) {
-        mean += _vertexPositions[j];
-        wsum += 1.0f;
-      }
-      mean /= wsum;
-
-      glm::vec3 lap = mean - _vertexPositions[i];
-
-      // clamp displacement (prevents collapse/explosion on tiny geometry)
-      // float l = glm::length(lap);
-      // if (l > MAX_STEP) lap *= (MAX_STEP / l);
-      float minEdge = std::numeric_limits<float>::infinity();
-
-      // compute min edge FIRST
-      for (unsigned int j : nbrs) {
-        float d = glm::length(_vertexPositions[j] - _vertexPositions[i]);
-        if (d > 1e-12f && d < minEdge) minEdge = d;
-      }
-      if (!std::isfinite(minEdge)) continue;
-
-      // now clamp lap using local scale
-      const float LOCAL_MAX_STEP = 0.1f * minEdge;
-
-      float l = glm::length(lap);
-      if (l > LOCAL_MAX_STEP) lap *= (LOCAL_MAX_STEP / l);
-
-      glm::vec3 candidate = _vertexPositions[i] + step * lap;
-      if (isFinite3(candidate)) newP[i] = candidate;
-    }
-
-    // if anything went non-finite, abort update
-    for (const auto& p : newP) {
-      if (!isFinite3(p)) return;
-    }
-
-    _vertexPositions.swap(newP);
-  };
-
+  // --- 3) Bilateral on welded vertices ---
   for (int it = 0; it < iterations; ++it) {
-    laplacianStep(lambda); // smooth
-    laplacianStep(mu);     // unshrink
+    std::vector<glm::vec3> newGPos = gPos;
+
+    for (int g = 0; g < nG; ++g) {
+      const glm::vec3 pg = gPos[g];
+      const glm::vec3 ng = gNrm[g];
+
+      glm::vec3 accum = pg;
+      float wsum = 1.0f;
+
+      for (int nb : adj[g]) {
+        const glm::vec3 pn = gPos[nb];
+        const glm::vec3 nn = gNrm[nb];
+
+        float dist = glm::length(pn - pg);
+        float ws = gauss(dist, spatialSigma);
+
+        float d = 1.0f - glm::clamp(glm::dot(ng, nn), -1.0f, 1.0f);
+        float wn = gauss(d, normalSigma);
+
+        float w = ws * wn;
+        if (!std::isfinite(w) || w <= 0.0f) continue;
+
+        accum += w * pn;
+        wsum  += w;
+      }
+
+      if (wsum > 1e-12f) {
+        glm::vec3 pbar = accum / wsum;
+
+        // stable: only move along normal (feature-preserving)
+        glm::vec3 delta = pbar - pg;
+        float t = glm::dot(delta, ng);
+        glm::vec3 candidate = pg + t * ng;
+
+        if (std::isfinite(candidate.x) && std::isfinite(candidate.y) && std::isfinite(candidate.z))
+          newGPos[g] = candidate;
+      }
+    }
+
+    gPos.swap(newGPos);
   }
+
+  // --- 4) Write welded positions back to original vertices ---
+  for (size_t i = 0; i < nV; ++i) {
+    _vertexPositions[i] = gPos[v2g[i]];
+  }
+
+  // Update normals safely (now safe normalize)
+  recomputePerVertexNormals();
 }
+
 
 
 int Mesh::countDegenerateTriangles(float eps) const
