@@ -38,11 +38,12 @@ public:
 
   void addPlan(float square_half_side = 1.0f);
 
-  // void taubinSmooth(int iterations = 10, float lambda = 0.5f, float mu = -0.53f);
   void updatePositionsAndNormalsOnGPU();
-  int countDegenerateTriangles(float eps = 1e-12f) const;
 
   void bilateralFilterWelded(int iterations = 2, float spatialSigmaFactor = 2.0f, float normalSigma = 0.6f, float weldEps = 1e-6f);
+
+  void saveState();
+  void restoreState();
 
 
 
@@ -57,6 +58,11 @@ private:
   GLuint _normalVbo = 0;
   GLuint _texCoordVbo = 0;
   GLuint _ibo = 0;
+
+  std::vector<glm::vec3> _savedPositions;
+  std::vector<glm::vec3> _savedNormals;
+  bool _hasSavedState = false;
+
 };
 
 // utility: loader

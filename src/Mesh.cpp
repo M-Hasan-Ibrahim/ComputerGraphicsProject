@@ -591,17 +591,15 @@ void Mesh::bilateralFilterWelded(int iterations, float spatialSigmaFactor, float
   recomputePerVertexNormals();
 }
 
-
-
-int Mesh::countDegenerateTriangles(float eps) const
-{
-  int deg = 0;
-  for (const auto& tri : _triangleIndices) {
-    const glm::vec3& a = _vertexPositions[tri.x];
-    const glm::vec3& b = _vertexPositions[tri.y];
-    const glm::vec3& c = _vertexPositions[tri.z];
-    float area2 = glm::length(glm::cross(b - a, c - a)); // twice area
-    if (!std::isfinite(area2) || area2 < eps) deg++;
-  }
-  return deg;
+void Mesh::saveState() {
+  _savedPositions = _vertexPositions;
+  _savedNormals   = _vertexNormals;
+  _hasSavedState  = true;
 }
+
+void Mesh::restoreState() {
+  if (!_hasSavedState) return;
+  _vertexPositions = _savedPositions;
+  _vertexNormals   = _savedNormals;
+}
+

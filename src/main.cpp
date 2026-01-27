@@ -449,13 +449,11 @@ void printHelp()
     "    * Right button: pan camera" << std::endl <<
     "    Keyboard commands:" << std::endl <<
     "    * H: print this help" << std::endl <<
-    "    * T: toggle animation" << std::endl <<
-    "    * S: save shadow maps into PPM files" << std::endl <<
-    "    * F1: toggle wireframe/surface rendering" << std::endl <<
-    "    * R: ray trace once (writes raytrace.ppm)" << std::endl <<
-    "    * K: toggle ray tracing" << std::endl <<
+    "    * R: turn ray trace on" << std::endl <<
+    "    * K: turn ray tracing off" << std::endl <<
     "    * P: toggle frog animation" << std::endl <<
     "    * L: apply geometry filtering on frog" << std::endl <<
+    "    * U: reset geometry filtering on frog" << std::endl <<
     "    * ESC: quit the program" << std::endl;
 }
 
@@ -474,21 +472,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
 {
   if(action == GLFW_PRESS && key == GLFW_KEY_H) {
     printHelp();
-  } else if(action == GLFW_PRESS && key == GLFW_KEY_S) {
-    g_scene.saveShadowMapsPpm = true;
-  } else if(action == GLFW_PRESS && key == GLFW_KEY_T) {
-    g_appTimerStoppedP = !g_appTimerStoppedP;
-    if(!g_appTimerStoppedP)
-      g_appTimerLastColckTime = static_cast<float>(glfwGetTime());
-  } else if(action == GLFW_PRESS && key == GLFW_KEY_F1) {
-    GLint mode[2];
-    glGetIntegerv(GL_POLYGON_MODE, mode);
-    glPolygonMode(GL_FRONT_AND_BACK, mode[1] == GL_FILL ? GL_LINE : GL_FILL);
   } else if(action == GLFW_PRESS && key == GLFW_KEY_ESCAPE) {
     glfwSetWindowShouldClose(window, true); // Closes the application if the escape key is pressed
   } else if(action == GLFW_PRESS && key == GLFW_KEY_R) {
     g_doRayTrace = true;
-  } else if (key == GLFW_KEY_K && action == GLFW_PRESS) {
+  } else if (action == GLFW_PRESS && key == GLFW_KEY_K) {
     g_showRayTrace = false;
   } else if(action == GLFW_PRESS && key == GLFW_KEY_P) {
       glm::mat4 invV = glm::inverse(g_cam->computeViewMatrix());
@@ -500,11 +488,14 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
   } else if(action == GLFW_PRESS && key == GLFW_KEY_L) {
       if(g_scene.frog) {
         g_scene.frog->bilateralFilterWelded(2, 2.0f, 0.6f, 1e-6f);
-        // g_scene.frog->updatePositionsAndNormalsOnGPU();
         g_scene.frog->updatePositionsAndNormalsOnGPU();
-
       }
-  }
+  } else if (action == GLFW_PRESS && key == GLFW_KEY_U) {
+      if (g_scene.frog) {
+        g_scene.frog->restoreState();
+        g_scene.frog->updatePositionsAndNormalsOnGPU();
+      }
+}
 
 }
 
@@ -682,6 +673,7 @@ void initScene(const std::string &meshFilename)
     }catch(std::exception &e){
       exitOnCriticalError(std::string("[Error loading frog mesh]") + e.what());
     }
+    g_scene.frog->saveState();
     g_scene.frog->init();
 
     
