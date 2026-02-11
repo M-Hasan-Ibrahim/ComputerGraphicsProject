@@ -147,16 +147,73 @@ static std::shared_ptr<Mesh> makeUvSphere(float r=1.0f, int rings=16, int sector
 
 struct WaterTestBall {
   std::shared_ptr<Mesh> sphere;
-  glm::vec3 mouthLocal = glm::vec3(21.0f, 30.5f, 0.0f); // tuned
+
+  // tuned mouth anchor (local frog space)
+  glm::vec3 mouthLocal = glm::vec3(21.0f, 34.0f, 0.0f);
+
+  // state
   glm::vec3 pos = glm::vec3(0.0f);
+  glm::vec3 vel = glm::vec3(0.0f);
+  bool running = false;
+
   float radius = 0.1f;
+
+  // params (tweak later)
+  float spitSpeed = 3.0f;   // forward speed
+  float liftSpeed = 1.3f;   // upward speed
+  glm::vec3 gravity = glm::vec3(0.0f, -7.3f, 0.0f);
+  float rightBias = 0.6f; 
+
+  bool looping = false;
+  float groundY = -1.925f;   // TODO: set to your invisible plane Y
+
 
   glm::vec3 mouthWorld(const glm::mat4& frogMat) const {
     return glm::vec3(frogMat * glm::vec4(mouthLocal, 1.0f));
   }
 
-  void update(const glm::mat4& frogMat) {
+  // call when pressing S
+  void start(const glm::mat4& frogMat, bool loop) {
+    looping = loop;
+    running = true;
     pos = mouthWorld(frogMat);
+
+    glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
+    glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
+    glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2])); // flip sign if needed
+
+    vel = fwd * spitSpeed + up * liftSpeed + right * rightBias;
+  }
+
+  // per-frame update
+  void update(float dt, const glm::mat4& frogMat) {
+    if (!running) {
+      // Step 1 behavior: stick to mouth when not running
+      pos = mouthWorld(frogMat);
+      return;
+    }
+
+    // projectile integration (explicit Euler)
+    vel += gravity * dt;
+    pos += vel * dt;
+
+    // hit invisible plane
+    if (pos.y <= groundY) {
+      if (looping) {
+        // restart instantly from mouth with fresh velocity
+        pos = mouthWorld(frogMat);
+
+        glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
+        glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
+        glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2]));
+
+        vel = fwd * spitSpeed + up * liftSpeed + right * rightBias;
+      } else {
+        // if you ever want non-loop mode:
+        running = false;
+        pos = mouthWorld(frogMat);
+      }
+    }
   }
 
   void render(const std::shared_ptr<ShaderProgram>& sh) const {
@@ -578,7 +635,14 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         g_scene.frog->restoreState();
         g_scene.frog->updatePositionsAndNormalsOnGPU();
       }
-  }
+  } else if (key == GLFW_KEY_S && action == GLFW_PRESS) {
+      if (!g_waterBall.running) {
+        g_waterBall.start(g_scene.frogMat, true); // true = infinite loop
+      } else {
+        // optional: if already running, do nothing
+      }
+    }
+
 }
 
 // Called each time the mouse cursor moves
@@ -790,9 +854,8 @@ void initScene(const std::string &meshFilename)
     g_frogSelect.initFromFrogMat(g_scene.frogMat);
 
     g_waterBall.sphere = makeUvSphere(1.0f, 16, 32);
-    g_waterBall.update(g_scene.frogMat);
-
-
+    g_waterBall.groundY = -2.9f;
+    g_waterBall.update(0.0f, g_scene.frogMat);
   }
 
   GLuint back_rockTex = loadTextureFromFileToGPU("data/rock_back_texture.png");
@@ -916,9 +979,12 @@ void update(float currentTime)
   float dt = currentTime - lastTime;     // seconds since last frame
   lastTime = currentTime;
 
+  if (dt > 1.0f/60.0f) dt = 1.0f/60.0f;
+  if (dt < 0.0f) dt = 0.0f;
+
   g_frogSelect.update(dt, g_scene.frogMat);
 
-  g_waterBall.update(g_scene.frogMat);
+  g_waterBall.update(dt, g_scene.frogMat);
 
 
 }
