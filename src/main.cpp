@@ -38,6 +38,7 @@
 #include <memory>
 #include <algorithm>
 #include <exception>
+#include <iomanip>
 
 #include "Error.h"
 #include "ShaderProgram.h"
@@ -96,6 +97,84 @@ static GLuint g_rtVao = 0;
 
 
 static FrogSelectAnim g_frogSelect;
+
+
+// ---------------- Water test (Step 1+) ----------------
+static std::shared_ptr<Mesh> makeUvSphere(float r=1.0f, int rings=16, int sectors=32) {
+  auto m = std::make_shared<Mesh>();
+  auto& P  = m->vertexPositions();
+  auto& N  = m->vertexNormals();
+  auto& UV = m->vertexTexCoords();
+  auto& I  = m->triangleIndices();
+
+  P.clear(); N.clear(); UV.clear(); I.clear();
+
+  for (int i = 0; i <= rings; ++i) {
+    float v = float(i) / float(rings);
+    float theta = v * float(M_PI); // 0..pi
+
+    for (int j = 0; j <= sectors; ++j) {
+      float u = float(j) / float(sectors);
+      float phi = u * 2.0f * float(M_PI); // 0..2pi
+
+      glm::vec3 n(
+        std::sin(theta) * std::cos(phi),
+        std::cos(theta),
+        std::sin(theta) * std::sin(phi)
+      );
+
+      P.push_back(r * n);
+      N.push_back(glm::normalize(n));
+      UV.push_back(glm::vec2(u, v));
+    }
+  }
+
+  auto idx = [&](int i, int j){ return i*(sectors+1) + j; };
+  for (int i = 0; i < rings; ++i) {
+    for (int j = 0; j < sectors; ++j) {
+      int i0 = idx(i, j);
+      int i1 = idx(i+1, j);
+      int i2 = idx(i+1, j+1);
+      int i3 = idx(i, j+1);
+      I.push_back(glm::uvec3(i0, i1, i2));
+      I.push_back(glm::uvec3(i0, i2, i3));
+    }
+  }
+
+  m->init();
+  return m;
+}
+
+struct WaterTestBall {
+  std::shared_ptr<Mesh> sphere;
+  glm::vec3 mouthLocal = glm::vec3(21.0f, 30.5f, 0.0f); // tuned
+  glm::vec3 pos = glm::vec3(0.0f);
+  float radius = 0.1f;
+
+  glm::vec3 mouthWorld(const glm::mat4& frogMat) const {
+    return glm::vec3(frogMat * glm::vec4(mouthLocal, 1.0f));
+  }
+
+  void update(const glm::mat4& frogMat) {
+    pos = mouthWorld(frogMat);
+  }
+
+  void render(const std::shared_ptr<ShaderProgram>& sh) const {
+    if (!sphere) return;
+
+    glm::mat4 M = glm::translate(glm::mat4(1.0f), pos)
+                * glm::scale(glm::mat4(1.0f), glm::vec3(radius));
+
+    sh->set("material.useTexture", 0);
+    sh->set("material.albedo", glm::vec3(0.0f, 0.4f, 1.0f)); // blue
+    sh->set("modelMat", M);
+    sh->set("normMat", glm::mat3(glm::inverseTranspose(M)));
+    sphere->render();
+  }
+};
+
+
+static WaterTestBall g_waterBall;
 
 
 
@@ -430,7 +509,11 @@ struct Scene {
     mainShader->set("normMat", glm::mat3(glm::inverseTranspose(frogMat)));
 
     frog->render();
-    // std::cout << "frog rendered" << std::endl;
+    // g_waterBall.render(mainShader);
+
+    glDisable(GL_CULL_FACE);
+    g_waterBall.render(mainShader);
+    glEnable(GL_CULL_FACE);
 
     mainShader->stop();
     //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -495,8 +578,7 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         g_scene.frog->restoreState();
         g_scene.frog->updatePositionsAndNormalsOnGPU();
       }
-}
-
+  }
 }
 
 // Called each time the mouse cursor moves
@@ -707,6 +789,10 @@ void initScene(const std::string &meshFilename)
     g_scene.frogMat = stageTranslate * glm::translate(glm::mat4(1.0f), glm::vec3(-1.2f, -0.46f, 1.95f)) * frogRotate * glm::scale(glm::mat4(1.0f), glm::vec3(0.015f));
     g_frogSelect.initFromFrogMat(g_scene.frogMat);
 
+    g_waterBall.sphere = makeUvSphere(1.0f, 16, 32);
+    g_waterBall.update(g_scene.frogMat);
+
+
   }
 
   GLuint back_rockTex = loadTextureFromFileToGPU("data/rock_back_texture.png");
@@ -831,6 +917,9 @@ void update(float currentTime)
   lastTime = currentTime;
 
   g_frogSelect.update(dt, g_scene.frogMat);
+
+  g_waterBall.update(g_scene.frogMat);
+
 
 }
 
