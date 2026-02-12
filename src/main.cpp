@@ -39,6 +39,7 @@
 #include <algorithm>
 #include <exception>
 #include <iomanip>
+#include <array>
 
 #include "Error.h"
 #include "ShaderProgram.h"
@@ -145,94 +146,237 @@ static std::shared_ptr<Mesh> makeUvSphere(float r=1.0f, int rings=16, int sector
   return m;
 }
 
-struct WaterTestBall {
+// struct WaterTestBall {
+//   std::shared_ptr<Mesh> sphere;
+
+//   // tuned mouth anchor (local frog space)
+//   glm::vec3 mouthLocal = glm::vec3(21.0f, 34.0f, 0.0f);
+
+//   // state
+//   glm::vec3 pos = glm::vec3(0.0f);
+//   glm::vec3 vel = glm::vec3(0.0f);
+//   bool running = false;
+
+//   float radius = 0.1f;
+
+//   // params (tweak later)
+//   float spitSpeed = 3.0f;   // forward speed
+//   float liftSpeed = 1.3f;   // upward speed
+//   glm::vec3 gravity = glm::vec3(0.0f, -7.3f, 0.0f);
+//   float rightBias = 0.6f; 
+
+//   bool looping = false;
+//   float groundY = -1.925f;   // TODO: set to your invisible plane Y
+
+
+//   glm::vec3 mouthWorld(const glm::mat4& frogMat) const {
+//     return glm::vec3(frogMat * glm::vec4(mouthLocal, 1.0f));
+//   }
+
+//   // call when pressing S
+//   void start(const glm::mat4& frogMat, bool loop) {
+//     looping = loop;
+//     running = true;
+//     pos = mouthWorld(frogMat);
+
+//     glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
+//     glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
+//     glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2])); // flip sign if needed
+
+//     vel = fwd * spitSpeed + up * liftSpeed + right * rightBias;
+//   }
+
+//   // per-frame update
+//   void update(float dt, const glm::mat4& frogMat) {
+//     if (!running) {
+//       // Step 1 behavior: stick to mouth when not running
+//       pos = mouthWorld(frogMat);
+//       return;
+//     }
+
+//     // projectile integration (explicit Euler)
+//     vel += gravity * dt;
+//     pos += vel * dt;
+
+//     // hit invisible plane
+//     if (pos.y <= groundY) {
+//       if (looping) {
+//         // restart instantly from mouth with fresh velocity
+//         pos = mouthWorld(frogMat);
+
+//         glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
+//         glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
+//         glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2]));
+
+//         vel = fwd * spitSpeed + up * liftSpeed + right * rightBias;
+//       } else {
+//         // if you ever want non-loop mode:
+//         running = false;
+//         pos = mouthWorld(frogMat);
+//       }
+//     }
+//   }
+
+//   void render(const std::shared_ptr<ShaderProgram>& sh) const {
+//     if (!sphere) return;
+
+//     glm::mat4 M = glm::translate(glm::mat4(1.0f), pos)
+//                 * glm::scale(glm::mat4(1.0f), glm::vec3(radius));
+
+//     sh->set("material.useTexture", 0);
+//     sh->set("material.albedo", glm::vec3(0.0f, 0.4f, 1.0f)); // blue
+//     sh->set("modelMat", M);
+//     sh->set("normMat", glm::mat3(glm::inverseTranspose(M)));
+//     sphere->render();
+//   }
+// };
+
+
+struct WaterParticle {
+  glm::vec3 pos = glm::vec3(0);
+  glm::vec3 vel = glm::vec3(0);
+};
+
+struct WaterEmitter {
   std::shared_ptr<Mesh> sphere;
 
-  // tuned mouth anchor (local frog space)
-  glm::vec3 mouthLocal = glm::vec3(21.0f, 34.0f, 0.0f);
+  glm::vec3 mouthLocal = glm::vec3(21.0f, 31.5f, -2.0f);
 
-  // state
-  glm::vec3 pos = glm::vec3(0.0f);
-  glm::vec3 vel = glm::vec3(0.0f);
   bool running = false;
+  bool looping = true;
+  float groundY = -3.0f;
 
-  float radius = 0.1f;
+  float spitSpeed = 3.5f;
+  float liftSpeed = 1.3f;
+  float rightBias = 0.6f;
+  glm::vec3 gravity = glm::vec3(0, -9.81f, 0);
 
-  // params (tweak later)
-  float spitSpeed = 3.0f;   // forward speed
-  float liftSpeed = 1.3f;   // upward speed
-  glm::vec3 gravity = glm::vec3(0.0f, -7.3f, 0.0f);
-  float rightBias = 0.6f; 
+  float radius = 0.03f; // smaller balls
 
-  bool looping = false;
-  float groundY = -1.925f;   // TODO: set to your invisible plane Y
+  static constexpr int kBallsPerBatch = 10;
+  static constexpr int kNumBatches    = 70;
+  static constexpr int kTotalBalls    = kBallsPerBatch * kNumBatches;
 
+  std::array<WaterParticle, kTotalBalls> p;
+
+  float batchDelay = 0.015f;        // seconds between batches (tweak)
+  float timeSinceStart = 0.0f;     // internal timer
+  bool  batchActive[kNumBatches] = {false};
+
+  int idx(int batch, int i) const { return batch * kBallsPerBatch + i; }
 
   glm::vec3 mouthWorld(const glm::mat4& frogMat) const {
     return glm::vec3(frogMat * glm::vec4(mouthLocal, 1.0f));
   }
 
-  // call when pressing S
-  void start(const glm::mat4& frogMat, bool loop) {
-    looping = loop;
+  glm::vec3 computeV0(const glm::mat4& frogMat) const {
+    glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
+    glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
+    glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2])); // flip sign if needed
+    return fwd * spitSpeed + up * liftSpeed + right * rightBias;
+  }
+
+  void launchBatch(int b, const glm::mat4& frogMat) {
+    glm::vec3 mouth = mouthWorld(frogMat);
+    glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
+    glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
+    glm::vec3 v0    = computeV0(frogMat);
+
+    for (int i = 0; i < kBallsPerBatch; ++i) {
+      float a = (i - 4.5f) * 0.03f;
+      float c = ((i % 3) - 1) * 0.02f;
+
+      p[idx(b,i)].pos = mouth;
+      p[idx(b,i)].vel = v0 + right * a + up * c;
+    }
+    batchActive[b] = true;
+  }
+
+  void start(const glm::mat4& frogMat) {
     running = true;
-    pos = mouthWorld(frogMat);
+    timeSinceStart = 0.0f;
+    for (int b = 0; b < kNumBatches; ++b) batchActive[b] = false;
+
+    // keep everything at mouth initially
+    glm::vec3 mouth = mouthWorld(frogMat);
+    for (auto& pi : p) pi.pos = mouth;
+
+    // spawn first batch now
+    launchBatch(0, frogMat);
+  }
+
+  void relaunchOne(WaterParticle& pi, const glm::mat4& frogMat, int iInBatch) {
+    glm::vec3 mouth = mouthWorld(frogMat);
 
     glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
     glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
     glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2])); // flip sign if needed
 
-    vel = fwd * spitSpeed + up * liftSpeed + right * rightBias;
+    glm::vec3 v0 = fwd * spitSpeed + up * liftSpeed + right * rightBias;
+
+    // keep your small spread so it looks like water
+    float a = (iInBatch - 4.5f) * 0.03f;
+    float c = ((iInBatch % 3) - 1) * 0.02f;
+
+    pi.pos = mouth;
+    pi.vel = v0 + right * a + up * c;
   }
 
-  // per-frame update
+
   void update(float dt, const glm::mat4& frogMat) {
     if (!running) {
-      // Step 1 behavior: stick to mouth when not running
-      pos = mouthWorld(frogMat);
+      glm::vec3 mouth = mouthWorld(frogMat);
+      for (auto& pi : p) pi.pos = mouth;
       return;
     }
 
-    // projectile integration (explicit Euler)
-    vel += gravity * dt;
-    pos += vel * dt;
+    timeSinceStart += dt;
 
-    // hit invisible plane
-    if (pos.y <= groundY) {
-      if (looping) {
-        // restart instantly from mouth with fresh velocity
-        pos = mouthWorld(frogMat);
+    // activate batches when their delay passes
+    for (int b = 0; b < kNumBatches; ++b) {
+      if (!batchActive[b] && timeSinceStart >= b * batchDelay) {
+        launchBatch(b, frogMat);
+      }
+    }
 
-        glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
-        glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
-        glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2]));
+    // integrate + recycle (ONCE) for active batches
+    for (int b = 0; b < kNumBatches; ++b) {
+      if (!batchActive[b]) continue;
 
-        vel = fwd * spitSpeed + up * liftSpeed + right * rightBias;
-      } else {
-        // if you ever want non-loop mode:
-        running = false;
-        pos = mouthWorld(frogMat);
+      for (int i = 0; i < kBallsPerBatch; ++i) {
+        auto& pi = p[idx(b,i)];
+
+        pi.vel += gravity * dt;
+        pi.pos += pi.vel * dt;
+
+        // recycle ONLY this particle
+        if (pi.pos.y <= groundY) {
+          relaunchOne(pi, frogMat, i);
+        }
       }
     }
   }
 
+
   void render(const std::shared_ptr<ShaderProgram>& sh) const {
     if (!sphere) return;
 
-    glm::mat4 M = glm::translate(glm::mat4(1.0f), pos)
-                * glm::scale(glm::mat4(1.0f), glm::vec3(radius));
-
     sh->set("material.useTexture", 0);
-    sh->set("material.albedo", glm::vec3(0.0f, 0.4f, 1.0f)); // blue
-    sh->set("modelMat", M);
-    sh->set("normMat", glm::mat3(glm::inverseTranspose(M)));
-    sphere->render();
+    sh->set("material.albedo", glm::vec3(0.0f, 0.4f, 1.0f));
+
+    for (auto& pi : p) {
+      glm::mat4 M = glm::translate(glm::mat4(1.0f), pi.pos)
+                  * glm::scale(glm::mat4(1.0f), glm::vec3(radius));
+      sh->set("modelMat", M);
+      sh->set("normMat", glm::mat3(glm::inverseTranspose(M)));
+      sphere->render();
+    }
   }
 };
 
 
-static WaterTestBall g_waterBall;
-
+// static WaterTestBall g_waterBall;
+static WaterEmitter g_water;
 
 
 
@@ -566,10 +710,9 @@ struct Scene {
     mainShader->set("normMat", glm::mat3(glm::inverseTranspose(frogMat)));
 
     frog->render();
-    // g_waterBall.render(mainShader);
 
     glDisable(GL_CULL_FACE);
-    g_waterBall.render(mainShader);
+    g_water.render(mainShader);
     glEnable(GL_CULL_FACE);
 
     mainShader->stop();
@@ -636,8 +779,8 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         g_scene.frog->updatePositionsAndNormalsOnGPU();
       }
   } else if (key == GLFW_KEY_S && action == GLFW_PRESS) {
-      if (!g_waterBall.running) {
-        g_waterBall.start(g_scene.frogMat, true); // true = infinite loop
+      if (!g_water.running) {
+        g_water.start(g_scene.frogMat);
       } else {
         // optional: if already running, do nothing
       }
@@ -853,9 +996,9 @@ void initScene(const std::string &meshFilename)
     g_scene.frogMat = stageTranslate * glm::translate(glm::mat4(1.0f), glm::vec3(-1.2f, -0.46f, 1.95f)) * frogRotate * glm::scale(glm::mat4(1.0f), glm::vec3(0.015f));
     g_frogSelect.initFromFrogMat(g_scene.frogMat);
 
-    g_waterBall.sphere = makeUvSphere(1.0f, 16, 32);
-    g_waterBall.groundY = -2.9f;
-    g_waterBall.update(0.0f, g_scene.frogMat);
+    g_water.sphere = makeUvSphere(1.0f, 16, 32);
+    g_water.groundY = -3.0f;
+    g_water.update(0.0f, g_scene.frogMat);
   }
 
   GLuint back_rockTex = loadTextureFromFileToGPU("data/rock_back_texture.png");
@@ -984,7 +1127,7 @@ void update(float currentTime)
 
   g_frogSelect.update(dt, g_scene.frogMat);
 
-  g_waterBall.update(dt, g_scene.frogMat);
+  g_water.update(dt, g_scene.frogMat);
 
 
 }
