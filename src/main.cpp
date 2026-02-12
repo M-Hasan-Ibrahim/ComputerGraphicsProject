@@ -40,6 +40,7 @@
 #include <exception>
 #include <iomanip>
 #include <array>
+#include <ctime>
 
 #include "Error.h"
 #include "ShaderProgram.h"
@@ -238,6 +239,9 @@ struct WaterParticle {
 };
 
 struct WaterEmitter {
+  float rand01() const { return float(std::rand()) / float(RAND_MAX); }     // [0,1]
+  float rand11() const { return 2.0f * rand01() - 1.0f; }   
+
   std::shared_ptr<Mesh> sphere;
 
   glm::vec3 mouthLocal = glm::vec3(21.0f, 31.5f, -2.0f);
@@ -251,10 +255,10 @@ struct WaterEmitter {
   float rightBias = 0.6f;
   glm::vec3 gravity = glm::vec3(0, -9.81f, 0);
 
-  float radius = 0.03f; // smaller balls
+  float radius = 0.025f; // smaller balls
 
-  static constexpr int kBallsPerBatch = 10;
-  static constexpr int kNumBatches    = 70;
+  static constexpr int kBallsPerBatch = 15;
+  static constexpr int kNumBatches    = 60;
   static constexpr int kTotalBalls    = kBallsPerBatch * kNumBatches;
 
   std::array<WaterParticle, kTotalBalls> p;
@@ -283,11 +287,23 @@ struct WaterEmitter {
     glm::vec3 v0    = computeV0(frogMat);
 
     for (int i = 0; i < kBallsPerBatch; ++i) {
+      // base structured spread
       float a = (i - 4.5f) * 0.03f;
       float c = ((i % 3) - 1) * 0.02f;
 
-      p[idx(b,i)].pos = mouth;
-      p[idx(b,i)].vel = v0 + right * a + up * c;
+      // randomness (tweak these ranges)
+      float ja = rand11() * 0.03f;    // sideways velocity jitter
+      float jc = rand11() * 0.02f;    // vertical velocity jitter
+      float jf = rand11() * 0.02f;    // forward velocity jitter
+
+      // small position jitter at spawn (so they don't all start at exact same point)
+      glm::vec3 mouth = mouthWorld(frogMat);
+      glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
+      glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
+      glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2]));
+
+      p[idx(b, i)].pos = mouth + right * (rand11() * 0.01f) + up * (rand11() * 0.01f);
+      p[idx(b, i)].vel = v0 + right * (a + ja) + up * (c + jc) + fwd * (jf);
     }
     batchActive[b] = true;
   }
@@ -306,20 +322,31 @@ struct WaterEmitter {
   }
 
   void relaunchOne(WaterParticle& pi, const glm::mat4& frogMat, int iInBatch) {
-    glm::vec3 mouth = mouthWorld(frogMat);
+    // glm::vec3 mouth = mouthWorld(frogMat);
 
-    glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
-    glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
-    glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2])); // flip sign if needed
+    // glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
+    // glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
+    // glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2])); // flip sign if needed
 
-    glm::vec3 v0 = fwd * spitSpeed + up * liftSpeed + right * rightBias;
 
     // keep your small spread so it looks like water
-    float a = (iInBatch - 4.5f) * 0.03f;
-    float c = ((iInBatch % 3) - 1) * 0.02f;
+    float a = (iInBatch - 4.5f) * 0.02f;
+    float c = ((iInBatch % 3) - 1) * 0.01f;
 
-    pi.pos = mouth;
-    pi.vel = v0 + right * a + up * c;
+    // randomness (tweak these ranges)
+    float ja = rand11() * 0.15f;    // sideways velocity jitter
+    float jc = rand11() * 0.02f;    // vertical velocity jitter
+    float jf = rand11() * 0.06f;    // forward velocity jitter
+
+    // small position jitter at spawn (so they don't all start at exact same point)
+    glm::vec3 mouth = mouthWorld(frogMat);
+    glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
+    glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
+    glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2]));
+    glm::vec3 v0 = fwd * spitSpeed + up * liftSpeed + right * rightBias;
+
+    pi.pos = mouth + right * (rand11() * 0.01f) + up * (rand11() * 0.01f);
+    pi.vel = v0 + right * (a + ja) + up * (c + jc) + fwd * (jf);
   }
 
 
@@ -1145,6 +1172,9 @@ int main(int argc, char **argv)
   // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
   init(argc==1 ? DEFAULT_MESH_FILENAME : argv[1]);
   initRaytraceDisplay(); 
+
+  std::srand(std::time(nullptr)); // or std::time(nullptr) for true random
+
   while(!glfwWindowShouldClose(g_window)) {
     update(static_cast<float>(glfwGetTime()));
     render();
