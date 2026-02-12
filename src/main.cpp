@@ -97,11 +97,12 @@ static int g_rtW = 800, g_rtH = 600;
 static std::shared_ptr<ShaderProgram> g_rtShader;
 static GLuint g_rtVao = 0;
 
+static GLuint g_waterTex = 0; 
+
 
 static FrogSelectAnim g_frogSelect;
 
 
-// ---------------- Water test (Step 1+) ----------------
 static std::shared_ptr<Mesh> makeUvSphere(float r=1.0f, int rings=16, int sectors=32) {
   auto m = std::make_shared<Mesh>();
   auto& P  = m->vertexPositions();
@@ -255,7 +256,7 @@ struct WaterEmitter {
   float rightBias = 0.6f;
   glm::vec3 gravity = glm::vec3(0, -9.81f, 0);
 
-  float radius = 0.025f; // smaller balls
+  float radius = 0.025f; 
 
   static constexpr int kBallsPerBatch = 15;
   static constexpr int kNumBatches    = 60;
@@ -388,8 +389,11 @@ struct WaterEmitter {
   void render(const std::shared_ptr<ShaderProgram>& sh) const {
     if (!sphere) return;
 
-    sh->set("material.useTexture", 0);
-    sh->set("material.albedo", glm::vec3(0.0f, 0.4f, 1.0f));
+    sh->set("material.useTexture", 1);
+    sh->set("material.albedo", glm::vec3(1.0f));      // IMPORTANT: white so texture shows
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_waterTex);
+    sh->set("material.albedoTex", 0);
 
     for (auto& pi : p) {
       glm::mat4 M = glm::translate(glm::mat4(1.0f), pi.pos)
@@ -398,6 +402,9 @@ struct WaterEmitter {
       sh->set("normMat", glm::mat3(glm::inverseTranspose(M)));
       sphere->render();
     }
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    sh->set("material.useTexture", 0);
   }
 };
 
@@ -1033,6 +1040,9 @@ void initScene(const std::string &meshFilename)
 
   GLuint stageTex = loadTextureFromFileToGPU("data/wood_table_diff_2k.jpg");
   g_scene.stageTexture = stageTex;
+
+  g_waterTex = loadTextureFromFileToGPU("data/water.png");
+  std::cout << "waterTex id = " << g_waterTex << "\n";
 
   g_scene.lights.clear();
   g_scene.lights.push_back(Light());
