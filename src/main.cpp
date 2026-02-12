@@ -59,16 +59,13 @@
 
 const std::string DEFAULT_MESH_FILENAME("data/frog1.obj");
 
-// window parameters
 GLFWwindow *g_window = nullptr;
 int g_windowWidth = 1024;
 int g_windowHeight = 768;
 
-// pointer to the current camera model
 std::shared_ptr<Camera> g_cam;
 
-// camera control variables
-float g_meshScale = 1.0; // to update based on the mesh size, so that navigation runs at scale
+float g_meshScale = 1.0; 
 bool g_rotatingP = false;
 bool g_panningP = false;
 bool g_zoomingP = false;
@@ -76,14 +73,12 @@ double g_baseX = 0.0, g_baseY = 0.0;
 glm::vec3 g_baseTrans(0.0);
 glm::vec3 g_baseRot(0.0);
 
-// timer
 float g_appTimer = 0.0;
 float g_appTimerLastColckTime;
 bool g_appTimerStoppedP = true;
 
 unsigned int g_availableTextureSlot = 0;
 
-//sky view
 GLuint g_skyTex = 0;
 GLuint g_skyVao = 0;
 std::shared_ptr<ShaderProgram> g_skyShader = nullptr;
@@ -114,11 +109,11 @@ static std::shared_ptr<Mesh> makeUvSphere(float r=1.0f, int rings=16, int sector
 
   for (int i = 0; i <= rings; ++i) {
     float v = float(i) / float(rings);
-    float theta = v * float(M_PI); // 0..pi
+    float theta = v * float(M_PI); 
 
     for (int j = 0; j <= sectors; ++j) {
       float u = float(j) / float(sectors);
-      float phi = u * 2.0f * float(M_PI); // 0..2pi
+      float phi = u * 2.0f * float(M_PI); 
 
       glm::vec3 n(
         std::sin(theta) * std::cos(phi),
@@ -148,99 +143,13 @@ static std::shared_ptr<Mesh> makeUvSphere(float r=1.0f, int rings=16, int sector
   return m;
 }
 
-// struct WaterTestBall {
-//   std::shared_ptr<Mesh> sphere;
-
-//   // tuned mouth anchor (local frog space)
-//   glm::vec3 mouthLocal = glm::vec3(21.0f, 34.0f, 0.0f);
-
-//   // state
-//   glm::vec3 pos = glm::vec3(0.0f);
-//   glm::vec3 vel = glm::vec3(0.0f);
-//   bool running = false;
-
-//   float radius = 0.1f;
-
-//   // params (tweak later)
-//   float spitSpeed = 3.0f;   // forward speed
-//   float liftSpeed = 1.3f;   // upward speed
-//   glm::vec3 gravity = glm::vec3(0.0f, -7.3f, 0.0f);
-//   float rightBias = 0.6f; 
-
-//   bool looping = false;
-//   float groundY = -1.925f;   // TODO: set to your invisible plane Y
-
-
-//   glm::vec3 mouthWorld(const glm::mat4& frogMat) const {
-//     return glm::vec3(frogMat * glm::vec4(mouthLocal, 1.0f));
-//   }
-
-//   // call when pressing S
-//   void start(const glm::mat4& frogMat, bool loop) {
-//     looping = loop;
-//     running = true;
-//     pos = mouthWorld(frogMat);
-
-//     glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
-//     glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
-//     glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2])); // flip sign if needed
-
-//     vel = fwd * spitSpeed + up * liftSpeed + right * rightBias;
-//   }
-
-//   // per-frame update
-//   void update(float dt, const glm::mat4& frogMat) {
-//     if (!running) {
-//       // Step 1 behavior: stick to mouth when not running
-//       pos = mouthWorld(frogMat);
-//       return;
-//     }
-
-//     // projectile integration (explicit Euler)
-//     vel += gravity * dt;
-//     pos += vel * dt;
-
-//     // hit invisible plane
-//     if (pos.y <= groundY) {
-//       if (looping) {
-//         // restart instantly from mouth with fresh velocity
-//         pos = mouthWorld(frogMat);
-
-//         glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
-//         glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
-//         glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2]));
-
-//         vel = fwd * spitSpeed + up * liftSpeed + right * rightBias;
-//       } else {
-//         // if you ever want non-loop mode:
-//         running = false;
-//         pos = mouthWorld(frogMat);
-//       }
-//     }
-//   }
-
-//   void render(const std::shared_ptr<ShaderProgram>& sh) const {
-//     if (!sphere) return;
-
-//     glm::mat4 M = glm::translate(glm::mat4(1.0f), pos)
-//                 * glm::scale(glm::mat4(1.0f), glm::vec3(radius));
-
-//     sh->set("material.useTexture", 0);
-//     sh->set("material.albedo", glm::vec3(0.0f, 0.4f, 1.0f)); // blue
-//     sh->set("modelMat", M);
-//     sh->set("normMat", glm::mat3(glm::inverseTranspose(M)));
-//     sphere->render();
-//   }
-// };
-
-
 struct WaterParticle {
   glm::vec3 pos = glm::vec3(0);
   glm::vec3 vel = glm::vec3(0);
 };
 
 struct WaterEmitter {
-  float rand01() const { return float(std::rand()) / float(RAND_MAX); }     // [0,1]
+  float rand01() const { return float(std::rand()) / float(RAND_MAX); }
   float rand11() const { return 2.0f * rand01() - 1.0f; }   
 
   std::shared_ptr<Mesh> sphere;
@@ -264,8 +173,8 @@ struct WaterEmitter {
 
   std::array<WaterParticle, kTotalBalls> p;
 
-  float batchDelay = 0.015f;        // seconds between batches (tweak)
-  float timeSinceStart = 0.0f;     // internal timer
+  float batchDelay = 0.015f;
+  float timeSinceStart = 0.0f;
   bool  batchActive[kNumBatches] = {false};
 
   int idx(int batch, int i) const { return batch * kBallsPerBatch + i; }
@@ -277,7 +186,7 @@ struct WaterEmitter {
   glm::vec3 computeV0(const glm::mat4& frogMat) const {
     glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
     glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
-    glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2])); // flip sign if needed
+    glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2]));
     return fwd * spitSpeed + up * liftSpeed + right * rightBias;
   }
 
@@ -288,16 +197,13 @@ struct WaterEmitter {
     glm::vec3 v0    = computeV0(frogMat);
 
     for (int i = 0; i < kBallsPerBatch; ++i) {
-      // base structured spread
       float a = (i - 4.5f) * 0.03f;
       float c = ((i % 3) - 1) * 0.02f;
 
-      // randomness (tweak these ranges)
-      float ja = rand11() * 0.03f;    // sideways velocity jitter
-      float jc = rand11() * 0.02f;    // vertical velocity jitter
-      float jf = rand11() * 0.02f;    // forward velocity jitter
+      float ja = rand11() * 0.03f;
+      float jc = rand11() * 0.02f;  
+      float jf = rand11() * 0.02f;  
 
-      // small position jitter at spawn (so they don't all start at exact same point)
       glm::vec3 mouth = mouthWorld(frogMat);
       glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
       glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
@@ -314,32 +220,20 @@ struct WaterEmitter {
     timeSinceStart = 0.0f;
     for (int b = 0; b < kNumBatches; ++b) batchActive[b] = false;
 
-    // keep everything at mouth initially
     glm::vec3 mouth = mouthWorld(frogMat);
     for (auto& pi : p) pi.pos = mouth;
 
-    // spawn first batch now
     launchBatch(0, frogMat);
   }
 
   void relaunchOne(WaterParticle& pi, const glm::mat4& frogMat, int iInBatch) {
-    // glm::vec3 mouth = mouthWorld(frogMat);
-
-    // glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
-    // glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
-    // glm::vec3 fwd   = glm::normalize(glm::vec3(frogMat[2])); // flip sign if needed
-
-
-    // keep your small spread so it looks like water
     float a = (iInBatch - 4.5f) * 0.02f;
     float c = ((iInBatch % 3) - 1) * 0.01f;
 
-    // randomness (tweak these ranges)
-    float ja = rand11() * 0.15f;    // sideways velocity jitter
-    float jc = rand11() * 0.02f;    // vertical velocity jitter
-    float jf = rand11() * 0.06f;    // forward velocity jitter
+    float ja = rand11() * 0.15f; 
+    float jc = rand11() * 0.02f;  
+    float jf = rand11() * 0.06f;   
 
-    // small position jitter at spawn (so they don't all start at exact same point)
     glm::vec3 mouth = mouthWorld(frogMat);
     glm::vec3 right = glm::normalize(glm::vec3(frogMat[0]));
     glm::vec3 up    = glm::normalize(glm::vec3(frogMat[1]));
@@ -360,14 +254,12 @@ struct WaterEmitter {
 
     timeSinceStart += dt;
 
-    // activate batches when their delay passes
     for (int b = 0; b < kNumBatches; ++b) {
       if (!batchActive[b] && timeSinceStart >= b * batchDelay) {
         launchBatch(b, frogMat);
       }
     }
 
-    // integrate + recycle (ONCE) for active batches
     for (int b = 0; b < kNumBatches; ++b) {
       if (!batchActive[b]) continue;
 
@@ -377,7 +269,6 @@ struct WaterEmitter {
         pi.vel += gravity * dt;
         pi.pos += pi.vel * dt;
 
-        // recycle ONLY this particle
         if (pi.pos.y <= groundY) {
           relaunchOne(pi, frogMat, i);
         }
@@ -390,7 +281,7 @@ struct WaterEmitter {
     if (!sphere) return;
 
     sh->set("material.useTexture", 1);
-    sh->set("material.albedo", glm::vec3(1.0f));      // IMPORTANT: white so texture shows
+    sh->set("material.albedo", glm::vec3(1.0f));
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_waterTex);
     sh->set("material.albedoTex", 0);
@@ -409,7 +300,6 @@ struct WaterEmitter {
 };
 
 
-// static WaterTestBall g_waterBall;
 static WaterEmitter g_water;
 
 
@@ -417,17 +307,15 @@ static WaterEmitter g_water;
 GLuint loadTextureFromFileToGPU(const std::string &filename)
 {
   int width, height, numComponents;
-  // Loading the image in CPU memory using stbd_image
   stbi_set_flip_vertically_on_load(true);
 
   unsigned char *data = stbi_load(
     filename.c_str(),
     &width,
     &height,
-    &numComponents, // 1 for a 8 bit greyscale image, 3 for 24bits RGB image, 4 for 32bits RGBA image
+    &numComponents, 
     0);
 
-  // Create a texture in GPU memory
   GLuint texID;
   glGenTextures(1, &texID);
   glBindTexture(GL_TEXTURE_2D, texID);
@@ -435,24 +323,21 @@ GLuint loadTextureFromFileToGPU(const std::string &filename)
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  // Uploading the image data to GPU memory
   glTexImage2D(
     GL_TEXTURE_2D,
     0,
-    (numComponents == 1 ? GL_RED : numComponents == 3 ? GL_RGB : GL_RGBA), // For greyscale images, we store them in the RED channel
+    (numComponents == 1 ? GL_RED : numComponents == 3 ? GL_RGB : GL_RGBA), 
     width,
     height,
     0,
-    (numComponents == 1 ? GL_RED : numComponents == 3 ? GL_RGB : GL_RGBA), // For greyscale images, we store them in the RED channel
+    (numComponents == 1 ? GL_RED : numComponents == 3 ? GL_RGB : GL_RGBA), 
     GL_UNSIGNED_BYTE,
     data);
 
-  // Generating mipmaps for filtered texture fetch
   glGenerateMipmap(GL_TEXTURE_2D);
 
-  // Freeing the now useless CPU memory
   stbi_image_free(data);
-  glBindTexture(GL_TEXTURE_2D, 0); // unbind the texture
+  glBindTexture(GL_TEXTURE_2D, 0); 
   return texID;
 }
 
@@ -493,7 +378,6 @@ public:
     _depthMapTextureWidth = width;
     _depthMapTextureHeight = height;
 
-    // Depth texture. Slower than a depth buffer, but you can sample it later in your shader
     glGenTextures(1, &_depthMapTexture);
     glBindTexture(GL_TEXTURE_2D, _depthMapTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
@@ -504,7 +388,7 @@ public:
 
     glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, _depthMapTexture, 0);
 
-    glDrawBuffer(GL_NONE);      // No color buffers are written.
+    glDrawBuffer(GL_NONE);
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -530,11 +414,9 @@ public:
   {
     std::ofstream output_image(filename.c_str());
 
-    // READ THE PIXELS VALUES from FBO AND SAVE TO A .PPM FILE
     int i, j, k;
     float *pixels = new float[_depthMapTextureWidth*_depthMapTextureHeight];
 
-    // READ THE CONTENT FROM THE FBO
     glReadBuffer(GL_COLOR_ATTACHMENT0);
     glReadPixels(0, 0, _depthMapTextureWidth, _depthMapTextureHeight, GL_DEPTH_COMPONENT , GL_FLOAT, pixels);
 
@@ -579,7 +461,6 @@ struct Light {
     const glm::vec3 scene_center,
     const float scene_radius)
   {
-    // TODO: compute the MVP matrix from the light's point of view
   }
 
   void allocateShadowMapFbo(unsigned int w=800, unsigned int h=600)
@@ -600,14 +481,10 @@ struct Scene {
   std::shared_ptr<Mesh> rock = nullptr;
   std::shared_ptr<Mesh> frog = nullptr;
 
-  //texture
   GLuint back_rockTexture = 0;
   GLuint stageTexture = 0;
 
 
-  // meshes
-
-  // transformation matrices
   glm::mat4 backRockMat = glm::mat4(1.0);
   glm::mat4 stageMat = glm::mat4(1.0);
   glm::mat4 frogMat = glm::mat4(1.0);
@@ -620,10 +497,8 @@ struct Scene {
   glm::vec3 scene_center = glm::vec3(0);
   float scene_radius = 1.f;
 
-  // shaders to render the meshes and shadow maps
   std::shared_ptr<ShaderProgram> mainShader, shadomMapShader;
 
-  // useful for debug
   bool saveShadowMapsPpm = false;
 
   void render()
@@ -643,7 +518,7 @@ struct Scene {
 
       glBindTexture(GL_TEXTURE_2D, 0);
       glEnable(GL_DEPTH_TEST);
-      return; // IMPORTANT: skip raster scene
+      return; 
     }
 
     glEnable(GL_CULL_FACE);
@@ -651,10 +526,9 @@ struct Scene {
     
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, g_windowWidth, g_windowHeight);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Erase the color and z buffers.
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glCullFace(GL_BACK);
 
-    //SKY draw
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
 
@@ -674,18 +548,15 @@ struct Scene {
 
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
-    // glClear(GL_DEPTH_BUFFER_BIT);
 
 
 
     mainShader->use();
 
-    // camera
     mainShader->set("camPos", g_cam->getPosition());
     mainShader->set("viewMat", g_cam->computeViewMatrix());
     mainShader->set("projMat", g_cam->computeProjectionMatrix());
 
-    // lights    
     Light &L = lights[0];
     mainShader->set("light.position",  L.position);
     mainShader->set("light.color",     L.color);
@@ -694,7 +565,6 @@ struct Scene {
 
 
 
-    // back-wall
     mainShader->set("material.albedo", glm::vec3(0.29, 0.51, 0.82));
     mainShader->set("modelMat", backRockMat);
     mainShader->set("normMat", glm::mat3(glm::inverseTranspose(backRockMat)));
@@ -712,7 +582,6 @@ struct Scene {
     glBindTexture(GL_TEXTURE_2D, 0);
     
 
-    // stage
     mainShader->set("material.albedo", glm::vec3(0.6f, 0.6f, 0.6f));
     mainShader->set("modelMat", stageMat);
     mainShader->set("normMat", glm::mat3(glm::inverseTranspose(stageMat)));
@@ -727,7 +596,6 @@ struct Scene {
     mainShader->set("material.useTexture", 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    //rocks
     auto drawRock = [&](const glm::mat4& M){
       mainShader->set("material.albedo", glm::vec3(0.6f, 0.6f, 0.6f));
       mainShader->set("modelMat", M);
@@ -738,7 +606,6 @@ struct Scene {
     drawRock(rockMat2);
     drawRock(rockMat3);
 
-    // frog
     mainShader->set("material.albedo", glm::vec3(0.6f, 0.6f, 0.6f));
     mainShader->set("modelMat", frogMat);
     mainShader->set("normMat", glm::mat3(glm::inverseTranspose(frogMat)));
@@ -750,7 +617,6 @@ struct Scene {
     glEnable(GL_CULL_FACE);
 
     mainShader->stop();
-    //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   }
 };
 
@@ -774,23 +640,21 @@ void printHelp()
     "    * ESC: quit the program" << std::endl;
 }
 
-// Executed each time the window is resized. Adjust the aspect ratio and the rendering viewport to the current window.
 void windowSizeCallback(GLFWwindow *window, int width, int height)
 {
   g_windowWidth = width;
   g_windowHeight = height;
   g_cam->setAspectRatio(static_cast<float>(width)/static_cast<float>(height));
-  glViewport(0, 0, (GLint)width, (GLint)height); // Dimension of the rendering region in the window
+  glViewport(0, 0, (GLint)width, (GLint)height);
 }
 
 
-// Executed each time a key is entered.
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
   if(action == GLFW_PRESS && key == GLFW_KEY_H) {
     printHelp();
   } else if(action == GLFW_PRESS && key == GLFW_KEY_ESCAPE) {
-    glfwSetWindowShouldClose(window, true); // Closes the application if the escape key is pressed
+    glfwSetWindowShouldClose(window, true); 
   } else if(action == GLFW_PRESS && key == GLFW_KEY_R) {
     g_doRayTrace = true;
   } else if (action == GLFW_PRESS && key == GLFW_KEY_K) {
@@ -816,13 +680,11 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
       if (!g_water.running) {
         g_water.start(g_scene.frogMat);
       } else {
-        // optional: if already running, do nothing
       }
     }
 
 }
 
-// Called each time the mouse cursor moves
 void cursorPosCallback(GLFWwindow *window, double xpos, double ypos)
 {
   int width, height;
@@ -840,7 +702,6 @@ void cursorPosCallback(GLFWwindow *window, double xpos, double ypos)
   }
 }
 
-// Called each time a mouse button is pressed
 void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
 {
   if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
@@ -872,20 +733,17 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
 
 void initGLFW()
 {
-  // Initialize GLFW, the library responsible for window management
   if(!glfwInit()) {
     std::cerr << "ERROR: Failed to init GLFW" << std::endl;
     std::exit(EXIT_FAILURE);
   }
 
-  // Before creating the window, set some option flags
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
 
-  // Create the window
   g_window = glfwCreateWindow(g_windowWidth, g_windowHeight, "IGR202 - Practical - Shadow", nullptr, nullptr);
   if(!g_window) {
     std::cerr << "ERROR: Failed to open window" << std::endl;
@@ -893,13 +751,10 @@ void initGLFW()
     std::exit(EXIT_FAILURE);
   }
 
-  // Load the OpenGL context in the GLFW window using GLAD OpenGL wrangler
   glfwMakeContextCurrent(g_window);
 
-  // not mandatory for all, but MacOS X
   glfwGetFramebufferSize(g_window, &g_windowWidth, &g_windowHeight);
 
-  // Connect the callbacks for interactive control
   glfwSetWindowSizeCallback(g_window, windowSizeCallback);
   glfwSetKeyCallback(g_window, keyCallback);
   glfwSetCursorPosCallback(g_window, cursorPosCallback);
@@ -918,25 +773,22 @@ void exitOnCriticalError(const std::string &message)
 
 void initOpenGL()
 {
-  // Load extensions for modern OpenGL
   if(!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     exitOnCriticalError("[Failed to initialize OpenGL context]");
 
-  glEnable(GL_DEBUG_OUTPUT);    // Modern error callback functionality
-  glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS); // For recovering the line where the error occurs, set a debugger breakpoint in DebugMessageCallback
-  glDebugMessageCallback(debugMessageCallback, 0); // Specifies the function to call when an error message is generated.
+  glEnable(GL_DEBUG_OUTPUT);   
+  glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS); 
+  glDebugMessageCallback(debugMessageCallback, 0);
 
-  glCullFace(GL_BACK); // Specifies the faces to cull (here the ones pointing away from the camera)
-  glEnable(GL_CULL_FACE); // Enables face culling (based on the orientation defined by the CW/CCW enumeration).
-  glDepthFunc(GL_LESS);   // Specify the depth test for the z-buffer
-  glEnable(GL_DEPTH_TEST);      // Enable the z-buffer test in the rasterization
-  glClearColor(1.0f, 1.0f, 1.0f, 1.0f); // specify the background color, used any time the framebuffer is cleared
+  glCullFace(GL_BACK); 
+  glEnable(GL_CULL_FACE);
+  glDepthFunc(GL_LESS);   
+  glEnable(GL_DEPTH_TEST);     
+  glClearColor(1.0f, 1.0f, 1.0f, 1.0f); 
 
-  // Loads and compile the programmable shader pipeline
   try {
     g_scene.mainShader = ShaderProgram::genBasicShaderProgram("src/vertexShader.glsl", "src/fragmentShader.glsl");
 
-    // sky shader + texture
     g_skyShader = ShaderProgram::genBasicShaderProgram("src/vertexShaderSky.glsl",
                                                    "src/fragmentShaderSky.glsl");
     g_skyTex = loadHDRTexture2D("data/farmland_overcast_4k.hdr");
@@ -953,16 +805,11 @@ void initOpenGL()
 
 void initScene(const std::string &meshFilename)
 {
-  // Init camera
   int width, height;
   glfwGetWindowSize(g_window, &width, &height);
   g_cam = std::make_shared<Camera>();
   g_cam->setAspectRatio(static_cast<float>(width)/static_cast<float>(height));
-
-  // Load meshes in the scene
   {
-
-    // rock back-wall
     g_scene.back_rock = std::make_shared<Mesh>();
     try {
       loadOBJ("data/rock_back.obj", g_scene.back_rock);
@@ -971,7 +818,6 @@ void initScene(const std::string &meshFilename)
     }
     g_scene.back_rock->init();
 
-    // stage
     g_scene.stage = std::make_shared<Mesh>();
     try{
       loadOBJ("data/stage.obj", g_scene.stage);
@@ -980,7 +826,6 @@ void initScene(const std::string &meshFilename)
     }
     g_scene.stage->init();
 
-    //rocks
     g_scene.rock = std::make_shared<Mesh>();
     try{
       loadOBJ("data/rock.obj", g_scene.rock);
@@ -989,7 +834,6 @@ void initScene(const std::string &meshFilename)
     }
     g_scene.rock->init();
 
-    //frog
     g_scene.frog = std::make_shared<Mesh>();
     try{
       loadOBJ("data/frog_decimated.obj", g_scene.frog);
@@ -1053,7 +897,6 @@ void initScene(const std::string &meshFilename)
   L.intensity = 3.0f;
 
 
-  // Adjust the camera to the mesh
   g_scene.scene_center = glm::vec3(0.0f);
   g_scene.scene_radius = 1.0f;
   g_meshScale = g_scene.scene_radius;
@@ -1065,16 +908,13 @@ void initScene(const std::string &meshFilename)
 }
 
 static void initRaytraceDisplay(){
-  // shader to show raytraced texture
   g_rtShader = ShaderProgram::genBasicShaderProgram(
     "src/vertexShaderRaytrace.glsl",
     "src/fragmentShaderRaytrace.glsl"
   );
 
-  // fullscreen triangle VAO (no VBO)
   glGenVertexArrays(1, &g_rtVao);
 
-  // raytrace texture (float RGB)
   glGenTextures(1, &g_rtTex);
   glBindTexture(GL_TEXTURE_2D, g_rtTex);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -1132,9 +972,9 @@ static void appendMeshToRTScene(RTScene& rt, const Mesh& mesh, const glm::mat4& 
 
 void init(const std::string &meshFilename)
 {
-  initGLFW();                   // Windowing system
-  initOpenGL();                 // OpenGL Context and shader pipeline
-  initScene(meshFilename);      // Actual g_scene to render
+  initGLFW();                 
+  initOpenGL();                
+  initScene(meshFilename);      
 }
 
 void clear()
@@ -1146,7 +986,6 @@ void clear()
   glfwTerminate();
 }
 
-// The main rendering call
 void render()
 {
   g_scene.render();
@@ -1155,8 +994,8 @@ void render()
 
 void update(float currentTime)
 {
-  static float lastTime = currentTime;   // stored between frames
-  float dt = currentTime - lastTime;     // seconds since last frame
+  static float lastTime = currentTime;   
+  float dt = currentTime - lastTime;  
   lastTime = currentTime;
 
   if (dt > 1.0f/60.0f) dt = 1.0f/60.0f;
@@ -1179,11 +1018,10 @@ void usage(const char *command)
 int main(int argc, char **argv)
 {
   if(argc > 2) usage(argv[0]);
-  // Your initialization code (user interface, OpenGL states, scene with geometry, material, lights, etc)
   init(argc==1 ? DEFAULT_MESH_FILENAME : argv[1]);
   initRaytraceDisplay(); 
 
-  std::srand(std::time(nullptr)); // or std::time(nullptr) for true random
+  std::srand(std::time(nullptr));
 
   while(!glfwWindowShouldClose(g_window)) {
     update(static_cast<float>(glfwGetTime()));
@@ -1206,7 +1044,6 @@ int main(int argc, char **argv)
       rt.textures.push_back(Texture2D());
       rt.textures.back().load("data/wood_table_diff_2k.jpg", true);
 
-      // Rock
       int matRock = (int)rt.mats.size();
       rt.mats.push_back(RTMaterial());
       rt.mats.back().albedo = glm::vec3(0.65f);
@@ -1214,7 +1051,6 @@ int main(int argc, char **argv)
       rt.mats.back().useTexture = false;
       rt.mats.back().texId = -1;
 
-      // Backwall
       int matWall = (int)rt.mats.size();
       rt.mats.push_back(RTMaterial());
       rt.mats.back().albedo = glm::vec3(1.0f);
@@ -1222,7 +1058,6 @@ int main(int argc, char **argv)
       rt.mats.back().useTexture = true;
       rt.mats.back().texId = texWall;
 
-      // Stage
       int matStage = (int)rt.mats.size();
       rt.mats.push_back(RTMaterial());
       rt.mats.back().albedo = glm::vec3(1.0f);
@@ -1230,16 +1065,13 @@ int main(int argc, char **argv)
       rt.mats.back().useTexture = true;
       rt.mats.back().texId = texStage;
 
-      // Frog
       int matFrog = (int)rt.mats.size();
       rt.mats.push_back(RTMaterial());
       rt.mats.back().albedo = glm::vec3(0.35f, 0.95f, 0.35f);
-      // rt.mats.back().albedo = glm::vec3(0.0f, 0.86f, 0.61f);
       rt.mats.back().shadowCatcher = false;
       rt.mats.back().useTexture = false;
       rt.mats.back().texId = -1;
 
-      // ground
       int matGround = (int)rt.mats.size();
       rt.mats.push_back(RTMaterial());
       rt.mats.back().albedo = glm::vec3(1.0f);
