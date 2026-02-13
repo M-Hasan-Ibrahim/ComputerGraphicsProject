@@ -21,8 +21,16 @@ struct RTTriangle {
   int matId = 0;
 };
 
+struct RTSphere {
+  glm::vec3 c;
+  float r;
+  int matId = 0;
+};
+
+
 struct RTScene {
   std::vector<RTTriangle> tris;
+  std::vector<RTSphere> spheres;
   std::vector<RTMaterial> mats;
   std::vector<Texture2D> textures;
 };
@@ -83,7 +91,7 @@ private:
 
   bool intersectScene(const RTScene& scene, const glm::vec3& ro, const glm::vec3& rd, Hit& hit, float tMaxLimit) const;
 
-  // static bool intersectPlaneY(const glm::vec3& ro, const glm::vec3& rd, float y, float& tOut);
+  static bool intersectSphere(const glm::vec3& ro, const glm::vec3& rd, const RTSphere& s, float& t);
   
 
   bool intersectBVH(const RTScene& scene, const glm::vec3& ro, const glm::vec3& rd, Hit& hit, float tMaxLimit) const;

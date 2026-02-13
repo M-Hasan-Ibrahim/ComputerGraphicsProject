@@ -640,6 +640,228 @@ void printHelp()
     "    * ESC: quit the program" << std::endl;
 }
 
+static void savePPM(const std::string& path, int W, int H, const std::vector<float>& rgb) {
+  std::ofstream f(path, std::ios::binary);
+  f << "P6\n" << W << " " << H << "\n255\n";
+  for (int i = 0; i < W*H; ++i) {
+    auto toByte = [&](float x){
+      x = std::max(0.0f, std::min(1.0f, x));
+      return (unsigned char)(x * 255.0f);
+    };
+    unsigned char r = toByte(rgb[3*i+0]);
+    unsigned char g = toByte(rgb[3*i+1]);
+    unsigned char b = toByte(rgb[3*i+2]);
+    f.write((char*)&r, 1);
+    f.write((char*)&g, 1);
+    f.write((char*)&b, 1);
+  }
+}
+
+static void appendMeshToRTScene(RTScene& rt, const Mesh& mesh, const glm::mat4& modelMat, int matId){
+  glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(modelMat)));
+
+  const auto& P = mesh.vertexPositions();
+  const auto& N = mesh.vertexNormals();
+  const auto& T = mesh.triangleIndices();
+  const auto& UV = mesh.vertexTexCoords();
+
+
+  for (size_t i = 0; i < T.size(); ++i) {
+    glm::uvec3 triIdx = T[i];
+
+    auto xformP = [&](uint32_t idx){
+      return glm::vec3(modelMat * glm::vec4(P[idx], 1.f));
+    };
+    auto xformN = [&](uint32_t idx){
+      return glm::normalize(normalMat * N[idx]);
+    };
+
+    RTTriangle tri;
+
+    if(!UV.empty()) {
+      tri.uv0 = UV[triIdx[0]];
+      tri.uv1 = UV[triIdx[1]];
+      tri.uv2 = UV[triIdx[2]];
+    } else {
+      tri.uv0 = tri.uv1 = tri.uv2 = glm::vec2(0.0f);
+    }
+
+    tri.p0 = xformP(triIdx[0]);
+    tri.p1 = xformP(triIdx[1]);
+    tri.p2 = xformP(triIdx[2]);
+    tri.n0 = xformN(triIdx[0]);
+    tri.n1 = xformN(triIdx[1]);
+    tri.n2 = xformN(triIdx[2]);
+    tri.matId = matId;
+
+    rt.tris.push_back(tri);
+  }
+
+}
+
+static std::vector<float> renderRaytracedFrameWithWaterSpheres(
+  int W, int H,
+  const std::vector<glm::vec3>& sphereCenters,
+  float sphereRadius)
+{
+  RTScene rt;
+  rt.mats.clear();
+  rt.textures.clear();
+  rt.tris.clear();
+  rt.spheres.clear();
+
+  int texWall = (int)rt.textures.size();
+  rt.textures.push_back(Texture2D());
+  rt.textures.back().load("data/rock_back_texture.png", true);
+
+  int texStage = (int)rt.textures.size();
+  rt.textures.push_back(Texture2D());
+  rt.textures.back().load("data/wood_table_diff_2k.jpg", true);
+
+  int matRock = (int)rt.mats.size();
+  rt.mats.push_back(RTMaterial());
+  rt.mats.back().albedo = glm::vec3(0.65f);
+  rt.mats.back().shadowCatcher = false;
+  rt.mats.back().useTexture = false;
+  rt.mats.back().texId = -1;
+
+  int matWall = (int)rt.mats.size();
+  rt.mats.push_back(RTMaterial());
+  rt.mats.back().albedo = glm::vec3(1.0f);
+  rt.mats.back().shadowCatcher = false;
+  rt.mats.back().useTexture = true;
+  rt.mats.back().texId = texWall;
+
+  int matStage = (int)rt.mats.size();
+  rt.mats.push_back(RTMaterial());
+  rt.mats.back().albedo = glm::vec3(1.0f);
+  rt.mats.back().shadowCatcher = false;
+  rt.mats.back().useTexture = true;
+  rt.mats.back().texId = texStage;
+
+  int matFrog = (int)rt.mats.size();
+  rt.mats.push_back(RTMaterial());
+  rt.mats.back().albedo = glm::vec3(0.35f, 0.95f, 0.35f);
+  rt.mats.back().shadowCatcher = false;
+  rt.mats.back().useTexture = false;
+  rt.mats.back().texId = -1;
+
+  int matGround = (int)rt.mats.size();
+  rt.mats.push_back(RTMaterial());
+  rt.mats.back().albedo = glm::vec3(1.0f);
+  rt.mats.back().shadowCatcher = true;
+  rt.mats.back().useTexture = false;
+  rt.mats.back().texId = -1;
+
+  int matWater = (int)rt.mats.size();
+  rt.mats.push_back(RTMaterial());
+  rt.mats.back().albedo = glm::vec3(0.0f, 0.4f, 1.0f);
+  rt.mats.back().shadowCatcher = false;
+  rt.mats.back().useTexture = false;
+  rt.mats.back().texId = -1;
+
+  appendMeshToRTScene(rt, *g_scene.back_rock, g_scene.backRockMat, matWall);
+  appendMeshToRTScene(rt, *g_scene.stage,     g_scene.stageMat,    matStage);
+  appendMeshToRTScene(rt, *g_scene.rock,      g_scene.rockMat1,    matRock);
+  appendMeshToRTScene(rt, *g_scene.rock,      g_scene.rockMat2,    matRock);
+  appendMeshToRTScene(rt, *g_scene.frog,      g_scene.frogMat,     matFrog);
+
+  rt.spheres.reserve(sphereCenters.size());
+  for (const auto& c : sphereCenters) {
+    RTSphere s;
+    s.c = c;
+    s.r = sphereRadius;
+    s.matId = matWater;
+    rt.spheres.push_back(s);
+  }
+
+  RTCamera cam;
+  cam.pos = g_cam->getPosition();
+  cam.invView = glm::inverse(g_cam->computeViewMatrix());
+  cam.fovYDegrees = g_cam->getFov();
+  cam.aspect = g_cam->getAspectRatio();
+
+  glm::mat4 invV = cam.invView;
+  glm::vec3 right   = glm::vec3(invV[0]);
+  glm::vec3 up      = glm::vec3(invV[1]);
+  glm::vec3 forward = -glm::vec3(invV[2]);
+
+  RTLight L;
+  L.position  = cam.pos + (-1.5f)*right + (3.0f)*up + (3.0f)*forward;
+  L.color     = glm::vec3(1.f);
+  L.intensity = 15.0f;
+
+  EnvMap env;
+  env.loadHDR("data/farmland_overcast_4k.hdr");
+
+  RayTracer tracer(W, H);
+  tracer.setEnvMap(&env);
+  tracer.buildBVH(rt);
+  tracer.setGround(-1.925f, matGround, 0.6f);
+
+  auto pixels = tracer.render(rt, cam, L); 
+
+  std::vector<float> out(3 * W * H);
+  for (int i = 0; i < W * H; ++i) {
+    out[3*i + 0] = pixels[i].r;
+    out[3*i + 1] = pixels[i].g;
+    out[3*i + 2] = pixels[i].b;
+  }
+  return out;
+}
+
+static void offlineCaptureWaterAndRenderVideo()
+{
+  const int W = g_rtW, H = g_rtH;
+  const float dt = 1.0f / 60.0f;
+
+  const float warmupSeconds  = 2.0f;
+  const float captureSeconds = 5.0f;
+
+  const int warmupSteps = (int)std::round(warmupSeconds / dt);
+  const int frames      = (int)std::round(captureSeconds / dt);
+
+  std::system("mkdir -p offline_frames");
+
+  g_water.running = false;
+  g_water.start(g_scene.frogMat);
+
+  for (int i = 0; i < warmupSteps; ++i) {
+    g_frogSelect.update(dt, g_scene.frogMat);
+    g_water.update(dt, g_scene.frogMat);
+  }
+
+  std::vector<std::vector<glm::vec3>> waterCenters;
+  waterCenters.resize(frames);
+
+  for (int f = 0; f < frames; ++f) {
+    g_frogSelect.update(dt, g_scene.frogMat);
+    g_water.update(dt, g_scene.frogMat);
+
+    auto& centers = waterCenters[f];
+    centers.resize(WaterEmitter::kTotalBalls);
+    for (int i = 0; i < WaterEmitter::kTotalBalls; ++i) {
+      centers[i] = g_water.p[i].pos;
+    }
+  }
+
+  for (int f = 0; f < frames; ++f) {
+    auto rgb = renderRaytracedFrameWithWaterSpheres(W, H, waterCenters[f], g_water.radius);
+
+    char name[256];
+    std::snprintf(name, sizeof(name), "offline_frames/frame_%04d.ppm", f);
+    savePPM(name, W, H, rgb);
+
+    std::cout << "Raytraced " << (f+1) << "/" << frames << "\n";
+  }
+
+  std::system("ffmpeg -y -framerate 60 -i offline_frames/frame_%04d.ppm -c:v libx264 -pix_fmt yuv420p final1.mp4");
+
+
+  std::cout << "DONE: final1.mp4 created\n";
+}
+
+
 void windowSizeCallback(GLFWwindow *window, int width, int height)
 {
   g_windowWidth = width;
@@ -681,7 +903,10 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
         g_water.start(g_scene.frogMat);
       } else {
       }
-    }
+  } else if (key == GLFW_KEY_Z && action == GLFW_PRESS) {
+    offlineCaptureWaterAndRenderVideo();
+  }
+
 
 }
 
@@ -927,47 +1152,7 @@ static void initRaytraceDisplay(){
 
 
 
-static void appendMeshToRTScene(RTScene& rt, const Mesh& mesh, const glm::mat4& modelMat, int matId){
-  glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(modelMat)));
 
-  const auto& P = mesh.vertexPositions();
-  const auto& N = mesh.vertexNormals();
-  const auto& T = mesh.triangleIndices();
-  const auto& UV = mesh.vertexTexCoords();
-
-
-  for (size_t i = 0; i < T.size(); ++i) {
-    glm::uvec3 triIdx = T[i];
-
-    auto xformP = [&](uint32_t idx){
-      return glm::vec3(modelMat * glm::vec4(P[idx], 1.f));
-    };
-    auto xformN = [&](uint32_t idx){
-      return glm::normalize(normalMat * N[idx]);
-    };
-
-    RTTriangle tri;
-
-    if(!UV.empty()) {
-      tri.uv0 = UV[triIdx[0]];
-      tri.uv1 = UV[triIdx[1]];
-      tri.uv2 = UV[triIdx[2]];
-    } else {
-      tri.uv0 = tri.uv1 = tri.uv2 = glm::vec2(0.0f);
-    }
-
-    tri.p0 = xformP(triIdx[0]);
-    tri.p1 = xformP(triIdx[1]);
-    tri.p2 = xformP(triIdx[2]);
-    tri.n0 = xformN(triIdx[0]);
-    tri.n1 = xformN(triIdx[1]);
-    tri.n2 = xformN(triIdx[2]);
-    tri.matId = matId;
-
-    rt.tris.push_back(tri);
-  }
-
-}
 
 
 void init(const std::string &meshFilename)
@@ -1079,11 +1264,30 @@ int main(int argc, char **argv)
       rt.mats.back().useTexture = false;
       rt.mats.back().texId = -1;
 
+      int matWater = (int)rt.mats.size();
+      rt.mats.push_back(RTMaterial());
+      rt.mats.back().albedo = glm::vec3(0.0f, 0.4f, 1.0f);
+      rt.mats.back().shadowCatcher = false;
+      rt.mats.back().useTexture = false;
+      rt.mats.back().texId = -1;
+
       appendMeshToRTScene(rt, *g_scene.back_rock, g_scene.backRockMat, matWall);
       appendMeshToRTScene(rt, *g_scene.stage, g_scene.stageMat, matStage);
       appendMeshToRTScene(rt, *g_scene.rock, g_scene.rockMat1, matRock);
       appendMeshToRTScene(rt, *g_scene.rock, g_scene.rockMat2, matRock);
       appendMeshToRTScene(rt, *g_scene.frog, g_scene.frogMat, matFrog);
+
+      rt.spheres.clear();
+      rt.spheres.reserve(WaterEmitter::kTotalBalls);
+
+      for (int i = 0; i < WaterEmitter::kTotalBalls; ++i) {
+        RTSphere s;
+        s.c = g_water.p[i].pos;   
+        s.r = g_water.radius;  
+        s.matId = matWater;
+        rt.spheres.push_back(s);
+      }
+
 
       RTCamera cam;
       cam.pos = g_cam->getPosition();

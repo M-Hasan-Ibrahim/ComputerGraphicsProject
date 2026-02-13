@@ -5,3 +5,5 @@ data/frog1.obj
 projectEx
 data/frog.mtl
 raytrace.ppm
+offline_frames
+raytrace.png

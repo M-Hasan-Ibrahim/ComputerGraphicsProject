@@ -32,9 +32,55 @@ bool RayTracer::intersectTriangle(const glm::vec3& ro, const glm::vec3& rd, cons
   return t > EPS;
 }
 
-bool RayTracer::intersectScene(const RTScene& scene, const glm::vec3& ro, const glm::vec3& rd, Hit& hit, float tMaxLimit) const {
-  return intersectBVH(scene, ro, rd, hit, tMaxLimit);
+bool RayTracer::intersectScene(const RTScene& scene, const glm::vec3& ro, const glm::vec3& rd, Hit& hit, float tMaxLimit) const
+{
+  bool any = false;
+
+  Hit ht;
+  if (intersectBVH(scene, ro, rd, ht, tMaxLimit)) {
+    hit = ht;
+    any = true;
+  }
+
+  // NEW: spheres
+  for (const auto& s : scene.spheres) {
+    float t;
+    if (!intersectSphere(ro, rd, s, t)) continue;
+    if (t >= tMaxLimit) continue;
+    if (t < hit.t) {
+      hit.t = t;
+      hit.p = ro + t * rd;
+      hit.n = glm::normalize(hit.p - s.c);
+      hit.uv = glm::vec2(0.0f);
+      hit.matId = s.matId;
+      any = true;
+    }
+  }
+
+  return any;
 }
+
+
+bool RayTracer::intersectSphere(const glm::vec3& ro, const glm::vec3& rd, const RTSphere& s, float& t)
+{
+  glm::vec3 oc = ro - s.c;
+  float b = glm::dot(oc, rd);
+  float c = glm::dot(oc, oc) - s.r * s.r;
+  float disc = b*b - c;
+  if (disc < 0.0f) return false;
+
+  float sd = std::sqrt(disc);
+  float t0 = -b - sd;
+  float t1 = -b + sd;
+
+  const float EPS = 1e-4f;
+  float tt = (t0 > EPS) ? t0 : ((t1 > EPS) ? t1 : -1.0f);
+  if (tt < 0.0f) return false;
+
+  t = tt;
+  return true;
+}
+
 
 
 bool RayTracer::isOccluded(const RTScene& scene, const glm::vec3& p, const glm::vec3& n, const glm::vec3& lightPos) const {
