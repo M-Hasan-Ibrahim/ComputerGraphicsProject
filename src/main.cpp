@@ -491,7 +491,7 @@ struct Scene {
 
   glm::mat4 rockMat1 = glm::mat4(1.0);
   glm::mat4 rockMat2 = glm::mat4(1.0);
-  glm::mat4 rockMat3 = glm::mat4(1.0);
+  // glm::mat4 rockMat3 = glm::mat4(1.0);
   
 
   glm::vec3 scene_center = glm::vec3(0);
@@ -604,7 +604,7 @@ struct Scene {
     };
     drawRock(rockMat1);
     drawRock(rockMat2);
-    drawRock(rockMat3);
+    // drawRock(rockMat3);
 
     mainShader->set("material.albedo", glm::vec3(0.6f, 0.6f, 0.6f));
     mainShader->set("modelMat", frogMat);
@@ -852,7 +852,6 @@ static void offlineCaptureWaterAndRenderVideo()
     std::snprintf(name, sizeof(name), "offline_frames/frame_%04d.ppm", f);
     savePPM(name, W, H, rgb);
 
-    std::cout << "Raytraced " << (f+1) << "/" << frames << "\n";
   }
 
   std::system("ffmpeg -y -framerate 60 -i offline_frames/frame_%04d.ppm -c:v libx264 -pix_fmt yuv420p final1.mp4");
@@ -1092,7 +1091,7 @@ void initScene(const std::string &meshFilename)
     glm::mat4 rockScale = glm::scale(glm::mat4(1.0f), glm::vec3(0.2f));
     g_scene.rockMat1 = stageTranslate * glm::translate(glm::mat4(1.0f), glm::vec3(-0.2f, -0.7f, 1.8f)) * rockScale;
     g_scene.rockMat2 = stageTranslate * glm::translate(glm::mat4(1.0f), glm::vec3(-1.2f, -0.7f, 2.0f)) * rockScale;
-    g_scene.rockMat3 = stageTranslate * glm::translate(glm::mat4(1.0f), glm::vec3(-0.2f, -10.7f, 1.5f)) * rockScale;
+    // g_scene.rockMat3 = stageTranslate * glm::translate(glm::mat4(1.0f), glm::vec3(-0.2f, -10.7f, 1.5f)) * rockScale;
 
     glm::mat4 frogRotate = glm::rotate(glm::mat4(1.0f), glm::radians(-125.0f), glm::vec3(0,1,0));
 
@@ -1111,7 +1110,6 @@ void initScene(const std::string &meshFilename)
   g_scene.stageTexture = stageTex;
 
   g_waterTex = loadTextureFromFileToGPU("data/water.png");
-  std::cout << "waterTex id = " << g_waterTex << "\n";
 
   g_scene.lights.clear();
   g_scene.lights.push_back(Light());
